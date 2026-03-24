@@ -12,7 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 # Gather source files
 file(GLOB SOURCES 
-    "main.cpp"
+    "src/*.cpp"
     "rlImGui/*.cpp"
     "imgui/*.cpp"
 )
