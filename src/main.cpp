@@ -11,6 +11,8 @@ int main() {
 
     rlImGuiSetup(true);
     ImGui::GetIO().FontGlobalScale = 2.0f;
+    ImGui::GetIO().Fonts->AddFontFromFileTTF("../font/JetBrainsMonoNerdFont-Medium.ttf", 18.0f);
+
     Camera3D camera = { 0 };
     camera.position = Vector3{ 10.0f, 10.0f, 10.0f };
     camera.target = Vector3{ 0.0f, 0.0f, 0.0f };
