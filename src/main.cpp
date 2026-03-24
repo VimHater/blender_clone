@@ -52,8 +52,8 @@ int main() {
                 ImGui::EndMainMenuBar();
             }
 
-            ImGui::SetNextWindowPos(ImVec2(1385, 327), ImGuiCond_Always);
-            ImGui::SetNextWindowSize(ImVec2(450, 200), ImGuiCond_Always);
+            ImGui::SetNextWindowPos(ImVec2(1385, 327), ImGuiCond_Once);
+            ImGui::SetNextWindowSize(ImVec2(450, 200), ImGuiCond_Once);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10,10));
             ImGui::Begin("PropertiesCube");
                 ImGui::Text("Object: Cube");
@@ -68,8 +68,8 @@ int main() {
             ImGui::End();
             ImGui::PopStyleVar();
 
-            ImGui::SetNextWindowPos(ImVec2(1385, 88), ImGuiCond_Always);
-            ImGui::SetNextWindowSize(ImVec2(450, 200), ImGuiCond_Always);
+            ImGui::SetNextWindowPos(ImVec2(1385, 88), ImGuiCond_Once);
+            ImGui::SetNextWindowSize(ImVec2(450, 200), ImGuiCond_Once);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10,10));
             ImGui::Begin("PropertiesSphere");
                 ImGui::Text("Object: Sphere");
@@ -83,8 +83,8 @@ int main() {
             ImGui::End();
             ImGui::PopStyleVar();
 
-            ImGui::SetNextWindowPos(ImVec2(60, 60), ImGuiCond_Always);
-            ImGui::SetNextWindowSize(ImVec2(1200, 800), ImGuiCond_Always);
+            ImGui::SetNextWindowPos(ImVec2(60, 60), ImGuiCond_Once);
+            ImGui::SetNextWindowSize(ImVec2(1200, 800), ImGuiCond_Once);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10,10));
             ImGui::Begin("Viewport");
                 ImVec2 viewSize = ImGui::GetContentRegionAvail();
