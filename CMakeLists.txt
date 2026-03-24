@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.10)
 project(blender_clone)
 
 # Hide ZERO_CHECK by disabling CMake auto-regeneration
@@ -41,9 +41,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     )
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     if(MSVC)
-        # Statically link the VC runtime to avoid missing vcruntime140.dll
-        set_property(TARGET main PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-
         set(RAYLIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/raylib-msvc")
         target_include_directories(main PRIVATE "${RAYLIB_DIR}/include")
         target_link_directories(main PRIVATE "${RAYLIB_DIR}/lib")
