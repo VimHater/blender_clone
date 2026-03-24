@@ -22,6 +22,7 @@ add_executable(main ${SOURCES})
 
 # Include directories common to all platforms
 target_include_directories(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
+target_include_directories(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/rlImGui)
 
 # Platform-specific configurations
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")

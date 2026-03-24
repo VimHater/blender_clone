@@ -1,6 +1,6 @@
 #include "raylib.h"
-#include "../rlImGui/rlImGui.h"
-#include "../imgui/imgui.h"
+#include "rlImGui.h"
+#include "imgui.h"
 #include <stdint.h>
 #include <cstdint>
 int main() {
