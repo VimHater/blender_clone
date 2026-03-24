@@ -41,10 +41,21 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     )
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     if(MSVC)
+    # This force-sets the "Static Runtime" (/MT for Release, /MTd for Debug)
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        
+        # Alternative for older CMake versions (< 3.15):
+        foreach(flag_var
+            CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
+            CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+            if(${flag_var} MATCHES "/MD")
+                string(REGEX REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
+            endif()
+        endforeach()
         set(RAYLIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/raylib-msvc")
         target_include_directories(main PRIVATE "${RAYLIB_DIR}/include")
         target_link_directories(main PRIVATE "${RAYLIB_DIR}/lib")
-        
+
         # MSVC specific libraries for Raylib
         target_link_libraries(main PRIVATE raylib.lib winmm.lib gdi32.lib shell32.lib user32.lib opengl32.lib)
     elseif(MINGW)
