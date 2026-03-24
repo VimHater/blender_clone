@@ -18,7 +18,6 @@ int main() {
     camera.fovy = 45.0f;
     camera.projection = CAMERA_PERSPECTIVE;
 
-    // 3. Setup ImGui and Render Texture
     rlImGuiSetup(true);
     RenderTexture screenTarget = LoadRenderTexture(screenWidth, screenHeight);
 
@@ -45,8 +44,6 @@ int main() {
         BeginDrawing();
             ClearBackground(BLACK);
             rlImGuiBegin();
-
-            // Menu Bar
             if (ImGui::BeginMainMenuBar()) {
                 if (ImGui::BeginMenu("File")) {
                     if (ImGui::MenuItem("Exit")) break;
@@ -55,7 +52,8 @@ int main() {
                 ImGui::EndMainMenuBar();
             }
 
-            // Sidebar
+            ImGui::SetNextWindowPos(ImVec2(1385, 327), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(450, 200), ImGuiCond_Always);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10,10));
             ImGui::Begin("PropertiesCube");
                 ImGui::Text("Object: Cube");
@@ -70,6 +68,8 @@ int main() {
             ImGui::End();
             ImGui::PopStyleVar();
 
+            ImGui::SetNextWindowPos(ImVec2(1385, 88), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(450, 200), ImGuiCond_Always);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10,10));
             ImGui::Begin("PropertiesSphere");
                 ImGui::Text("Object: Sphere");
@@ -83,12 +83,11 @@ int main() {
             ImGui::End();
             ImGui::PopStyleVar();
 
-            // Viewport
+            ImGui::SetNextWindowPos(ImVec2(60, 60), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(1200, 800), ImGuiCond_Always);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10,10));
             ImGui::Begin("Viewport");
-                // Calculate aspect ratio fit
                 ImVec2 viewSize = ImGui::GetContentRegionAvail();
-                // Draw the texture inside the ImGui window
                 rlImGuiImageRenderTextureFit(&screenTarget, true);
             ImGui::End();
             ImGui::PopStyleVar();
