@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.10)
 project(blender_clone)
 
+# Hide ZERO_CHECK by disabling CMake auto-regeneration
+set(CMAKE_SUPPRESS_REGENERATION TRUE)
+
+# Group standard CMake targets (like ALL_BUILD) into a folder to keep the root Solution Explorer clean
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
