@@ -5,14 +5,17 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-file(GLOB SOURCES 
+file(GLOB SOURCES
     "src/*.cpp"
+    "src/core/*.cpp"
+    "src/ui/*.cpp"
     "rlImGui/*.cpp"
     "imgui/*.cpp"
 )
 
 add_executable(blender_clone ${SOURCES})
 
+target_include_directories(blender_clone PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_include_directories(blender_clone PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
 target_include_directories(blender_clone PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/rlImGui)
 
