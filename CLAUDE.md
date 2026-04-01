@@ -13,8 +13,17 @@ cmake -B build && cmake --build build
 ## Project Structure
 
 - `src/` — all source and header files
-  - `main.cpp` — entry point, main loop
-  - `blender_clone.h` — core types and function declarations
+  - `main.cpp` — entry point only (init, loop, shutdown)
+  - `editor.h/.cpp` — top-level Editor struct, app lifecycle (window, imgui, font)
+  - `core/` — engine-level modules (no UI dependency)
+    - `types.h` — constants, enums, base structs (ObjectTransform, ObjectMaterial, SceneObject)
+    - `scene.h/.cpp` — Scene management, object drawing, texture helpers
+    - `camera.h/.cpp` — EditorCamera (orbit, pan, zoom)
+    - `raycast.h/.cpp` — bounding-box raycasting for object picking
+    - `timeline.h/.cpp` — Timeline playback + keyframe animation
+    - `shadow.h/.cpp` — ShadowMap stubs (requires GLSL shaders)
+  - `ui/` — ImGui panel code
+    - `ui.h/.cpp` — layout system, viewport, hierarchy, properties, timeline panels
 - `imgui/` — Dear ImGui source (vendored)
 - `rlImGui/` — raylib-ImGui binding (vendored)
 - `raylib-linux/`, `raylib-mingw/`, `raylib-msvc/` — prebuilt raylib per platform
