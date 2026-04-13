@@ -50,6 +50,7 @@ ObjectMaterial material_default() {
     m.color = WHITE;
     m.texture = Texture2D{0};
     m.hasTexture = false;
+    m.texturePath[0] = '\0';
     m.roughness = 0.5f;
     m.metallic = 0.0f;
     return m;
@@ -257,27 +258,53 @@ SceneObject *scene_get_by_id(Scene *s, uint32_t id) {
     return (idx >= 0) ? &s->objects[idx] : nullptr;
 }
 
-// helper: generate a temp model for mesh-based types, draw it, unload
-static void draw_mesh_object(const SceneObject *obj, DrawMode mode, Color c) {
-    Mesh mesh = {0};
-    bool hasMesh = false;
+// generate a mesh for a given object type (returns true if mesh was generated)
+static bool gen_object_mesh(const SceneObject *obj, Mesh *out) {
     switch (obj->type) {
+        case OBJ_CUBE:
+            *out = GenMeshCube(obj->cubeSize[0], obj->cubeSize[1], obj->cubeSize[2]);
+            return true;
+        case OBJ_SPHERE:
+            *out = GenMeshSphere(obj->sphereRadius, obj->sphereRings, obj->sphereSlices);
+            return true;
+        case OBJ_PLANE:
+            *out = GenMeshPlane(obj->cubeSize[0], obj->cubeSize[2], 1, 1);
+            return true;
+        case OBJ_CYLINDER:
+            *out = GenMeshCylinder(obj->cylinderRadiusTop, obj->cylinderHeight, 16);
+            return true;
+        case OBJ_CONE:
+            *out = GenMeshCone(obj->coneRadius, obj->coneHeight, obj->coneSlices);
+            return true;
         case OBJ_TORUS:
-            mesh = GenMeshTorus(obj->torusRadius, obj->torusSize, obj->torusRadSeg, obj->torusSides);
-            hasMesh = true; break;
+            *out = GenMeshTorus(obj->torusRadius, obj->torusSize, obj->torusRadSeg, obj->torusSides);
+            return true;
         case OBJ_KNOT:
-            mesh = GenMeshKnot(obj->torusRadius, obj->torusSize, obj->torusRadSeg, obj->torusSides);
-            hasMesh = true; break;
+            *out = GenMeshKnot(obj->torusRadius, obj->torusSize, obj->torusRadSeg, obj->torusSides);
+            return true;
         case OBJ_POLY:
-            mesh = GenMeshPoly(obj->polySides, obj->polyRadius);
-            hasMesh = true; break;
-        default: break;
+            *out = GenMeshPoly(obj->polySides, obj->polyRadius);
+            return true;
+        case OBJ_CAPSULE:
+            // GenMeshCapsule is not in raylib, skip
+            return false;
+        default: return false;
     }
-    if (!hasMesh) return;
+}
+
+// draw object as a model (with optional texture)
+static void draw_model_object(const SceneObject *obj, DrawMode mode, Color c) {
+    Mesh mesh = {0};
+    if (!gen_object_mesh(obj, &mesh)) return;
     Model mdl = LoadModelFromMesh(mesh);
+    if (obj->material.hasTexture) {
+        mdl.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = obj->material.texture;
+    }
     if (mode == DRAW_SOLID)          DrawModel(mdl, Vector3{0,0,0}, 1.0f, c);
     else if (mode == DRAW_WIREFRAME) DrawModelWires(mdl, Vector3{0,0,0}, 1.0f, c);
-    else if (mode == DRAW_POINT)   { DrawModelPoints(mdl, Vector3{0,0,0}, 1.0f, c); }
+    else                             DrawModelPoints(mdl, Vector3{0,0,0}, 1.0f, c);
+    // don't unload the texture — it belongs to the scene object
+    mdl.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = Texture2D{0};
     UnloadModel(mdl);
 }
 
@@ -289,6 +316,15 @@ static void draw_object(const SceneObject *obj, DrawMode mode) {
     rlMultMatrixf(MatrixToFloat(mat));
 
     Color c = obj->material.color;
+    bool textured = obj->material.hasTexture;
+
+    // for textured primitives (or mesh-only types), use model-based rendering
+    if (textured && obj->type != OBJ_CAMERA && obj->type != OBJ_TEAPOT
+        && obj->type != OBJ_MODEL_FILE) {
+        draw_model_object(obj, mode, c);
+        rlPopMatrix();
+        return;
+    }
 
     switch (obj->type) {
         case OBJ_CUBE:
@@ -338,7 +374,7 @@ static void draw_object(const SceneObject *obj, DrawMode mode) {
         case OBJ_TORUS:
         case OBJ_KNOT:
         case OBJ_POLY:
-            draw_mesh_object(obj, mode, c);
+            draw_model_object(obj, mode, c);
             break;
         case OBJ_CAPSULE:
             if (mode == DRAW_SOLID)
@@ -355,9 +391,18 @@ static void draw_object(const SceneObject *obj, DrawMode mode) {
         case OBJ_TEAPOT:
         case OBJ_MODEL_FILE:
             if (obj->modelLoaded) {
+                // apply texture to model if present
+                Texture2D origTex = {0};
+                if (textured) {
+                    origTex = obj->model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture;
+                    obj->model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = obj->material.texture;
+                }
                 if (mode == DRAW_SOLID)          DrawModel(obj->model, Vector3{0,0,0}, 1.0f, c);
                 else if (mode == DRAW_WIREFRAME) DrawModelWires(obj->model, Vector3{0,0,0}, 1.0f, c);
                 else                             DrawModelPoints(obj->model, Vector3{0,0,0}, 1.0f, c);
+                if (textured) {
+                    obj->model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = origTex;
+                }
             }
             break;
         case OBJ_CAMERA: {
@@ -462,9 +507,44 @@ void scene_draw_selection(const Scene *s) {
 
 // ---- Gizmo ----
 
-static const float GIZMO_LENGTH = 2.0f;
-static const float GIZMO_THICKNESS = 0.05f;
-static const float GIZMO_HIT_RADIUS = 0.15f;
+static const float GIZMO_BASE_LENGTH = 1.4f;
+static const float GIZMO_MIN_LENGTH = 1.0f;
+
+// approximate bounding radius of an object (unscaled by gizmo, just object extent)
+static float object_radius(const SceneObject *obj) {
+    Vector3 s = obj->transform.scale;
+    float ms = s.x > s.y ? (s.x > s.z ? s.x : s.z) : (s.y > s.z ? s.y : s.z);
+    switch (obj->type) {
+        case OBJ_CUBE:      return 0.5f * ms * sqrtf(obj->cubeSize[0]*obj->cubeSize[0] + obj->cubeSize[1]*obj->cubeSize[1] + obj->cubeSize[2]*obj->cubeSize[2]);
+        case OBJ_SPHERE:    return obj->sphereRadius * ms;
+        case OBJ_PLANE:     return 0.5f * ms * sqrtf(obj->cubeSize[0]*obj->cubeSize[0] + obj->cubeSize[2]*obj->cubeSize[2]);
+        case OBJ_CYLINDER:  return fmaxf(fmaxf(obj->cylinderRadiusTop, obj->cylinderRadiusBottom), obj->cylinderHeight * 0.5f) * ms;
+        case OBJ_CONE:      return fmaxf(obj->coneRadius, obj->coneHeight * 0.5f) * ms;
+        case OBJ_TORUS:
+        case OBJ_KNOT:      return (obj->torusSize + obj->torusRadius) * ms;
+        case OBJ_CAPSULE:   return fmaxf(obj->capsuleRadius, obj->capsuleHeight * 0.5f + obj->capsuleRadius) * ms;
+        case OBJ_POLY:      return obj->polyRadius * ms;
+        case OBJ_CAMERA:    return 0.5f;
+        case OBJ_TEAPOT:
+        case OBJ_MODEL_FILE:
+            if (obj->modelLoaded) {
+                BoundingBox bb = GetModelBoundingBox(obj->model);
+                float dx = (bb.max.x - bb.min.x) * s.x;
+                float dy = (bb.max.y - bb.min.y) * s.y;
+                float dz = (bb.max.z - bb.min.z) * s.z;
+                return 0.5f * sqrtf(dx*dx + dy*dy + dz*dz);
+            }
+            return 1.0f;
+        default: return 1.0f;
+    }
+}
+
+static float gizmo_length_for(const SceneObject *obj) {
+    float r = object_radius(obj);
+    float len = r * 0.7f + GIZMO_BASE_LENGTH;
+    if (len < GIZMO_MIN_LENGTH) len = GIZMO_MIN_LENGTH;
+    return len;
+}
 
 void scene_draw_gizmo(const Scene *s, TransformMode mode, GizmoAxis activeAxis) {
     if (s->selectedCount == 0) return;
@@ -476,8 +556,8 @@ void scene_draw_gizmo(const Scene *s, TransformMode mode, GizmoAxis activeAxis) 
     if (!obj) return;
 
     Vector3 p = obj->transform.position;
-    float len = GIZMO_LENGTH;
-    float t = GIZMO_THICKNESS;
+    float len = gizmo_length_for(obj);
+    float t = len * 0.025f; // thickness scales with length
 
     Color xCol = (activeAxis == GIZMO_X) ? YELLOW : RED;
     Color yCol = (activeAxis == GIZMO_Y) ? YELLOW : GREEN;
@@ -522,9 +602,10 @@ void scene_draw_gizmo(const Scene *s, TransformMode mode, GizmoAxis activeAxis) 
     }
 }
 
-GizmoAxis gizmo_hit_test(Vector3 gizmoPos, Ray ray, TransformMode mode) {
-    float len = GIZMO_LENGTH;
-    float r = GIZMO_HIT_RADIUS;
+GizmoAxis gizmo_hit_test(const SceneObject *obj, Ray ray, TransformMode mode) {
+    Vector3 gizmoPos = obj->transform.position;
+    float len = gizmo_length_for(obj);
+    float r = len * 0.075f; // hit radius scales with length
     (void)mode;
 
     // test each axis as a thin bounding box
@@ -704,6 +785,27 @@ void object_set_texture(SceneObject *obj, const char *path) {
     }
     obj->material.texture = LoadTexture(path);
     obj->material.hasTexture = (obj->material.texture.id != 0);
+    if (obj->material.hasTexture) {
+        snprintf(obj->material.texturePath, sizeof(obj->material.texturePath), "%s", path);
+    } else {
+        obj->material.texturePath[0] = '\0';
+    }
+}
+
+void object_set_texture_builtin(SceneObject *obj, const char *name,
+                                const unsigned char *data, unsigned int len) {
+    if (obj->material.hasTexture) {
+        UnloadTexture(obj->material.texture);
+    }
+    Image img = LoadImageFromMemory(".png", data, len);
+    obj->material.texture = LoadTextureFromImage(img);
+    UnloadImage(img);
+    obj->material.hasTexture = (obj->material.texture.id != 0);
+    if (obj->material.hasTexture) {
+        snprintf(obj->material.texturePath, sizeof(obj->material.texturePath), "[built-in] %s", name);
+    } else {
+        obj->material.texturePath[0] = '\0';
+    }
 }
 
 void object_clear_texture(SceneObject *obj) {
@@ -711,5 +813,6 @@ void object_clear_texture(SceneObject *obj) {
         UnloadTexture(obj->material.texture);
         obj->material.texture = Texture2D{0};
         obj->material.hasTexture = false;
+        obj->material.texturePath[0] = '\0';
     }
 }

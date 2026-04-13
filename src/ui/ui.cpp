@@ -4,6 +4,7 @@
 #include <imgui_internal.h>
 #include <cstdio>
 #include <cstdint>
+#include "builtin_textures/checkerboard.h"
 
 // ---- Init / Shutdown ----
 
@@ -26,6 +27,8 @@ void ui_init(EditorUI *ui, int vpW, int vpH) {
     ui->showCamera = true;
     ui->dockspaceInitialized = false;
     ui->activeCameraId = 0;
+    ui->showErrorPopup = false;
+    ui->errorMessage[0] = '\0';
     ui->gizmoActiveAxis = GIZMO_NONE;
     ui->gizmoDragging = false;
     ui->placementMode = false;
@@ -101,6 +104,24 @@ void ui_dockspace(EditorUI *ui) {
 
     ImGui::DockSpace(dockId, ImVec2(0, 0), ImGuiDockNodeFlags_None);
     ImGui::End();
+}
+
+// ---- Error Popup ----
+
+void ui_error_popup(EditorUI *ui) {
+    if (ui->showErrorPopup) {
+        ImGui::OpenPopup("Error");
+        ui->showErrorPopup = false;
+    }
+    ImGui::SetNextWindowSizeConstraints(ImVec2(400, 0), ImVec2(600, 300));
+    if (ImGui::BeginPopupModal("Error", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextWrapped("%s", ui->errorMessage);
+        ImGui::Separator();
+        if (ImGui::Button("OK", ImVec2(-1, 0))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
 }
 
 // ---- Menu Bar ----
@@ -334,6 +355,45 @@ void ui_properties(Scene *s, EditorUI *ui) {
         }
         ImGui::SliderFloat("Roughness", &obj->material.roughness, 0.0f, 1.0f);
         ImGui::SliderFloat("Metallic",  &obj->material.metallic, 0.0f, 1.0f);
+
+        ImGui::Separator();
+        ImGui::Text("Texture");
+        if (obj->material.hasTexture) {
+            ImGui::Text("Current: %s", obj->material.texturePath);
+            ImGui::Text("Size: %dx%d", obj->material.texture.width, obj->material.texture.height);
+        }
+        {
+            const char *texOptions[] = { "None", "Checkerboard", "From file..." };
+            static int texSel = 0;
+            // only sync to None if we're not already in "From file..." mode (waiting for path input)
+            if (!obj->material.hasTexture && texSel != 2) texSel = 0;
+            if (ImGui::Combo("##TexSelect", &texSel, texOptions, 3)) {
+                if (texSel == 0) {
+                    object_clear_texture(obj);
+                } else if (texSel == 1) {
+                    object_set_texture_builtin(obj, "Checkerboard",
+                        CHECKERBOARD_PNG, CHECKERBOARD_PNG_LEN);
+                }
+                // texSel == 2 handled below
+            }
+            if (texSel == 2) {
+                static char texPathBuf[256] = {};
+                ImGui::InputText("Path##tex", texPathBuf, sizeof(texPathBuf));
+                ImGui::SameLine();
+                if (ImGui::Button("Load##tex")) {
+                    if (texPathBuf[0] != '\0') {
+                        object_set_texture(obj, texPathBuf);
+                        if (!obj->material.hasTexture) {
+                            snprintf(ui->errorMessage, sizeof(ui->errorMessage),
+                                     "Failed to load texture:\n%s", texPathBuf);
+                            ui->showErrorPopup = true;
+                            texSel = 0;
+                        }
+                        texPathBuf[0] = '\0';
+                    }
+                }
+            }
+        }
     }
 
     if (ImGui::CollapsingHeader("Shape", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -441,8 +501,19 @@ void ui_add_object(Scene *s, EditorUI *ui) {
         if (modelPathBuf[0] != '\0') {
             int idx = scene_add_model(s, modelPathBuf);
             if (idx >= 0) {
-                scene_deselect_all(s);
-                scene_select(s, s->objects[idx].id, false, false);
+                if (!s->objects[idx].modelLoaded) {
+                    snprintf(ui->errorMessage, sizeof(ui->errorMessage),
+                             "Failed to load model:\n%s", modelPathBuf);
+                    ui->showErrorPopup = true;
+                    scene_remove(s, idx);
+                } else {
+                    scene_deselect_all(s);
+                    scene_select(s, s->objects[idx].id, false, false);
+                }
+            } else {
+                snprintf(ui->errorMessage, sizeof(ui->errorMessage),
+                         "Failed to add model (scene full):\n%s", modelPathBuf);
+                ui->showErrorPopup = true;
             }
             modelPathBuf[0] = '\0';
         }

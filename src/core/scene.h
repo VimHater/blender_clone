@@ -42,11 +42,12 @@ Model     load_model_from_obj_data(const char *objData);
 // gizmo
 enum GizmoAxis { GIZMO_NONE = 0, GIZMO_X, GIZMO_Y, GIZMO_Z };
 void         scene_draw_gizmo(const Scene *s, TransformMode mode, GizmoAxis activeAxis);
-GizmoAxis    gizmo_hit_test(Vector3 gizmoPos, Ray ray, TransformMode mode);
+GizmoAxis    gizmo_hit_test(const SceneObject *obj, Ray ray, TransformMode mode);
 
 // texture helpers
 Texture2D load_bitmap(const char *path);
 void      object_set_texture(SceneObject *obj, const char *path);
+void      object_set_texture_builtin(SceneObject *obj, const char *name, const unsigned char *data, unsigned int len);
 void      object_clear_texture(SceneObject *obj);
 
 #endif // CORE_SCENE_H

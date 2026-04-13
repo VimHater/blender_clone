@@ -114,7 +114,7 @@ void editor_update(Editor *ed) {
             // map UV to render texture pixel coords
             Vector2 rtMouse = { localX * (float)ed->ui.viewportW,
                                 localY * (float)ed->ui.viewportH };
-            Ray ray = GetScreenToWorldRay(rtMouse, ed->camera.cam);
+            Ray ray = GetScreenToWorldRayEx(rtMouse, ed->camera.cam, ed->ui.viewportW, ed->ui.viewportH);
 
             // intersect with ground plane y=0
             if (ray.direction.y != 0.0f) {
@@ -179,13 +179,27 @@ void editor_update(Editor *ed) {
                 Vector2 mouse = GetMousePosition();
                 float dx = mouse.x - ed->ui.gizmoDragStart.x;
                 float dy = mouse.y - ed->ui.gizmoDragStart.y;
-                // screen pixel delta → world delta (approximate: scale by distance / viewport size)
                 float sensitivity = ed->camera.distance / (float)ed->ui.viewportH;
 
+                // project world axis onto screen to get correct drag direction
+                auto axis_screen_dir = [&](Vector3 worldAxis) -> Vector2 {
+                    Vector3 p = ed->ui.gizmoDragObjStart;
+                    Vector2 s0 = GetWorldToScreenEx(p, ed->camera.cam, ed->ui.viewportW, ed->ui.viewportH);
+                    Vector2 s1 = GetWorldToScreenEx(Vector3Add(p, worldAxis), ed->camera.cam, ed->ui.viewportW, ed->ui.viewportH);
+                    Vector2 dir = { s1.x - s0.x, s1.y - s0.y };
+                    float len = sqrtf(dir.x * dir.x + dir.y * dir.y);
+                    if (len > 0.001f) { dir.x /= len; dir.y /= len; }
+                    return dir;
+                };
+
                 if (ed->ui.transformMode == TMODE_TRANSLATE) {
-                    float delta;
-                    if (ed->ui.gizmoActiveAxis == GIZMO_Y) delta = -dy * sensitivity;
-                    else delta = dx * sensitivity;
+                    Vector3 worldAxis = {0};
+                    if (ed->ui.gizmoActiveAxis == GIZMO_X) worldAxis = Vector3{1, 0, 0};
+                    else if (ed->ui.gizmoActiveAxis == GIZMO_Y) worldAxis = Vector3{0, 1, 0};
+                    else if (ed->ui.gizmoActiveAxis == GIZMO_Z) worldAxis = Vector3{0, 0, 1};
+
+                    Vector2 screenDir = axis_screen_dir(worldAxis);
+                    float delta = (dx * screenDir.x + dy * screenDir.y) * sensitivity;
 
                     if (ed->ui.gizmoActiveAxis == GIZMO_X)
                         obj->transform.position.x = ed->ui.gizmoDragObjStart.x + delta;
@@ -227,7 +241,7 @@ void editor_update(Editor *ed) {
             SceneObject *sel = scene_first_selected(&ed->scene);
             if (sel) {
                 Ray ray = viewport_ray(mouse);
-                GizmoAxis axis = gizmo_hit_test(sel->transform.position, ray, ed->ui.transformMode);
+                GizmoAxis axis = gizmo_hit_test(sel, ray, ed->ui.transformMode);
                 if (axis != GIZMO_NONE) {
                     ed->ui.gizmoActiveAxis = axis;
                     ed->ui.gizmoDragging = true;
@@ -346,6 +360,7 @@ void editor_draw(Editor *ed) {
             ui_camera(&ed->scene, &ed->camera, &ed->ui);
             ui_properties(&ed->scene, &ed->ui);
             ui_timeline(&ed->scene, &ed->timeline, &ed->ui);
+            ui_error_popup(&ed->ui);
         rlImGuiEnd();
     EndDrawing();
 }

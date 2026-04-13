@@ -43,6 +43,10 @@ struct EditorUI {
     Vector2 gizmoDragStart;         // screen mouse pos at drag start
     Vector3 gizmoDragObjStart;      // object position/rotation/scale at drag start
 
+    // error popup
+    bool showErrorPopup;
+    char errorMessage[256];
+
     // placement mode
     bool placementMode;
     ObjectType placementType;
@@ -62,5 +66,6 @@ void ui_properties(Scene *s, EditorUI *ui);
 void ui_add_object(Scene *s, EditorUI *ui);
 void ui_camera(Scene *s, EditorCamera *ec, EditorUI *ui);
 void ui_timeline(Scene *s, Timeline *tl, EditorUI *ui);
+void ui_error_popup(EditorUI *ui);
 
 #endif // UI_UI_H

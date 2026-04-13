@@ -65,6 +65,7 @@ struct ObjectMaterial {
     Color color;
     Texture2D texture;
     bool hasTexture;
+    char texturePath[256];
     float roughness;
     float metallic;
 };
