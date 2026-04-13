@@ -122,7 +122,7 @@ void editor_update(Editor *ed) {
             // left-click to place
             if (ed->ui.placementValid && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                 const char *names[] = {
-                    "None", "Cube", "Sphere", "HemiSphere", "Plane",
+                    "None", "Cube", "Sphere", "Plane",
                     "Cylinder", "Cone", "Torus", "Knot", "Capsule", "Polygon",
                     "Teapot", "Camera", "Model"
                 };

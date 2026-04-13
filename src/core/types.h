@@ -19,7 +19,6 @@ enum ObjectType {
     OBJ_NONE = 0,
     OBJ_CUBE,
     OBJ_SPHERE,
-    OBJ_HEMISPHERE,
     OBJ_PLANE,
     OBJ_CYLINDER,
     OBJ_CONE,

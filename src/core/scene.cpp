@@ -70,10 +70,11 @@ SceneObject object_default(const char *name, ObjectType type) {
     obj.cylinderRadiusTop = 0.5f;
     obj.cylinderRadiusBottom = 0.5f;
     obj.cylinderHeight = 2.0f;
-    obj.torusRadius = 1.0f;
-    obj.torusSize = 0.3f;
+    // torus/knot defaults (overridden per-type below)
+    obj.torusRadius = 0.5f;
+    obj.torusSize = 1.0f;
     obj.torusRadSeg = 16;
-    obj.torusSides = 16;
+    obj.torusSides = 30;
     obj.capsuleRadius = 0.5f;
     obj.capsuleHeight = 2.0f;
     obj.polySides = 6;
@@ -87,6 +88,11 @@ SceneObject object_default(const char *name, ObjectType type) {
     obj.camOrtho = false;
     obj.modelLoaded = false;
     obj.keyframeCount = 0;
+
+    if (type == OBJ_KNOT) {
+        obj.torusRadius = 1850.0f;
+        obj.torusSides = 64;
+    }
 
     if (type == OBJ_TEAPOT) {
         obj.model = load_model_from_obj_data(TEAPOT_OBJ_DATA);
@@ -260,9 +266,6 @@ static void draw_object(const SceneObject *obj) {
         case OBJ_SPHERE:
             DrawSphereEx(Vector3{0,0,0}, obj->sphereRadius, obj->sphereRings, obj->sphereSlices, c);
             break;
-        case OBJ_HEMISPHERE:
-            DrawSphereEx(Vector3{0,0,0}, obj->sphereRadius, obj->sphereRings, obj->sphereSlices, c);
-            break;
         case OBJ_PLANE:
             DrawPlane(Vector3{0,0,0}, Vector2{obj->cubeSize[0], obj->cubeSize[2]}, c);
             break;
@@ -347,7 +350,6 @@ static void draw_selection_outline(const SceneObject *obj) {
             DrawCubeWires(Vector3{0,0,0}, obj->cubeSize[0], obj->cubeSize[1], obj->cubeSize[2], sel);
             break;
         case OBJ_SPHERE:
-        case OBJ_HEMISPHERE:
             DrawSphereWires(Vector3{0,0,0}, obj->sphereRadius, obj->sphereRings, obj->sphereSlices, sel);
             break;
         case OBJ_PLANE:
@@ -360,11 +362,22 @@ static void draw_selection_outline(const SceneObject *obj) {
         case OBJ_CONE:
             DrawCylinderWires(Vector3{0,0,0}, 0.0f, obj->coneRadius, obj->coneHeight, obj->coneSlices, sel);
             break;
-        case OBJ_TORUS:
-        case OBJ_KNOT:
+        case OBJ_TORUS: {
+            Mesh m = GenMeshTorus(obj->torusRadius, obj->torusSize, obj->torusRadSeg, obj->torusSides);
+            Model md = LoadModelFromMesh(m);
+            DrawModelWires(md, Vector3{0,0,0}, 1.0f, sel);
+            UnloadModel(md);
+            break;
+        }
+        case OBJ_KNOT: {
+            Mesh m = GenMeshKnot(obj->torusRadius, obj->torusSize, obj->torusRadSeg, obj->torusSides);
+            Model md = LoadModelFromMesh(m);
+            DrawModelWires(md, Vector3{0,0,0}, 1.0f, sel);
+            UnloadModel(md);
+            break;
+        }
         case OBJ_POLY: {
-            // approximate with a bounding sphere wire
-            DrawSphereWires(Vector3{0,0,0}, obj->torusRadius + obj->torusSize, 8, 8, sel);
+            DrawSphereWires(Vector3{0,0,0}, obj->polyRadius, 8, 8, sel);
             break;
         }
         case OBJ_CAPSULE:
@@ -413,38 +426,50 @@ void scene_draw_preview(ObjectType type, Vector3 pos) {
     Color ghost = Color{0, 200, 255, 120};
     Color wire  = Color{0, 200, 255, 200};
 
+    // use default object values so preview matches actual placed object
+    SceneObject d = object_default("_preview", type);
+
     rlPushMatrix();
     rlTranslatef(pos.x, pos.y, pos.z);
 
     switch (type) {
         case OBJ_CUBE:
-            DrawCube(Vector3{0,0,0}, 2, 2, 2, ghost);
-            DrawCubeWires(Vector3{0,0,0}, 2, 2, 2, wire);
+            DrawCube(Vector3{0,0,0}, d.cubeSize[0], d.cubeSize[1], d.cubeSize[2], ghost);
+            DrawCubeWires(Vector3{0,0,0}, d.cubeSize[0], d.cubeSize[1], d.cubeSize[2], wire);
             break;
         case OBJ_SPHERE:
-        case OBJ_HEMISPHERE:
-            DrawSphereWires(Vector3{0,0,0}, 1.0f, 16, 16, wire);
+            DrawSphereWires(Vector3{0,0,0}, d.sphereRadius, d.sphereRings, d.sphereSlices, wire);
             break;
         case OBJ_PLANE:
-            DrawPlane(Vector3{0,0,0}, Vector2{2, 2}, ghost);
+            DrawPlane(Vector3{0,0,0}, Vector2{d.cubeSize[0], d.cubeSize[2]}, ghost);
             break;
         case OBJ_CYLINDER:
-            DrawCylinderWires(Vector3{0,0,0}, 0.5f, 0.5f, 2.0f, 16, wire);
+            DrawCylinderWires(Vector3{0,0,0}, d.cylinderRadiusTop, d.cylinderRadiusBottom, d.cylinderHeight, 16, wire);
             break;
         case OBJ_CONE:
-            DrawCylinderWires(Vector3{0,0,0}, 0.0f, 0.5f, 2.0f, 16, wire);
+            DrawCylinderWires(Vector3{0,0,0}, 0.0f, d.coneRadius, d.coneHeight, d.coneSlices, wire);
             break;
-        case OBJ_TORUS:
-            DrawSphereWires(Vector3{0,0,0}, 1.3f, 8, 8, wire);
+        case OBJ_TORUS: {
+            Mesh m = GenMeshTorus(d.torusRadius, d.torusSize, d.torusRadSeg, d.torusSides);
+            Model md = LoadModelFromMesh(m);
+            DrawModelWires(md, Vector3{0,0,0}, 1.0f, wire);
+            UnloadModel(md);
             break;
-        case OBJ_KNOT:
-            DrawSphereWires(Vector3{0,0,0}, 1.3f, 8, 8, wire);
+        }
+        case OBJ_KNOT: {
+            Mesh m = GenMeshKnot(d.torusRadius, d.torusSize, d.torusRadSeg, d.torusSides);
+            Model md = LoadModelFromMesh(m);
+            DrawModelWires(md, Vector3{0,0,0}, 1.0f, wire);
+            UnloadModel(md);
             break;
-        case OBJ_CAPSULE:
-            DrawCapsuleWires(Vector3{0, -1, 0}, Vector3{0, 1, 0}, 0.5f, 16, 8, wire);
+        }
+        case OBJ_CAPSULE: {
+            float halfH = d.capsuleHeight / 2.0f - d.capsuleRadius;
+            DrawCapsuleWires(Vector3{0, -halfH, 0}, Vector3{0, halfH, 0}, d.capsuleRadius, 16, 8, wire);
             break;
+        }
         case OBJ_POLY:
-            DrawSphereWires(Vector3{0,0,0}, 1.0f, 8, 8, wire);
+            DrawSphereWires(Vector3{0,0,0}, d.polyRadius, 8, d.polySides, wire);
             break;
         case OBJ_TEAPOT: {
             Model m = get_teapot_preview();

@@ -89,6 +89,10 @@ void ui_dockspace(EditorUI *ui) {
         ImGui::DockBuilderDockWindow("Timeline", dockBottom);
         ImGui::DockBuilderDockWindow("Viewport", dockMain);
 
+        // hide tab bar on viewport node
+        ImGuiDockNode *vpNode = ImGui::DockBuilderGetNode(dockMain);
+        if (vpNode) vpNode->LocalFlags |= ImGuiDockNodeFlags_NoTabBar;
+
         ImGui::DockBuilderFinish(dockId);
     }
 
@@ -105,19 +109,6 @@ void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui) {
             if (ImGui::MenuItem("Exit")) {
                 CloseWindow();
             }
-            ImGui::EndMenu();
-        }
-        if (ImGui::BeginMenu("Add")) {
-            if (ImGui::MenuItem("Cube"))       { ui->placementMode = true; ui->placementType = OBJ_CUBE; }
-            if (ImGui::MenuItem("Sphere"))     { ui->placementMode = true; ui->placementType = OBJ_SPHERE; }
-            if (ImGui::MenuItem("HemiSphere")) { ui->placementMode = true; ui->placementType = OBJ_HEMISPHERE; }
-            if (ImGui::MenuItem("Plane"))      { ui->placementMode = true; ui->placementType = OBJ_PLANE; }
-            if (ImGui::MenuItem("Cylinder"))   { ui->placementMode = true; ui->placementType = OBJ_CYLINDER; }
-            if (ImGui::MenuItem("Cone"))       { ui->placementMode = true; ui->placementType = OBJ_CONE; }
-            if (ImGui::MenuItem("Torus"))      { ui->placementMode = true; ui->placementType = OBJ_TORUS; }
-            if (ImGui::MenuItem("Knot"))       { ui->placementMode = true; ui->placementType = OBJ_KNOT; }
-            if (ImGui::MenuItem("Capsule"))    { ui->placementMode = true; ui->placementType = OBJ_CAPSULE; }
-            if (ImGui::MenuItem("Polygon"))    { ui->placementMode = true; ui->placementType = OBJ_POLY; }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View")) {
@@ -265,7 +256,6 @@ void ui_hierarchy(Scene *s, EditorUI *ui) {
     if (ImGui::BeginPopupContextWindow("HierarchyContext")) {
         hierarchy_context_add(s, "Add Cube",       "Cube",       OBJ_CUBE);
         hierarchy_context_add(s, "Add Sphere",     "Sphere",     OBJ_SPHERE);
-        hierarchy_context_add(s, "Add HemiSphere", "HemiSphere", OBJ_HEMISPHERE);
         hierarchy_context_add(s, "Add Plane",      "Plane",      OBJ_PLANE);
         hierarchy_context_add(s, "Add Cylinder",   "Cylinder",   OBJ_CYLINDER);
         hierarchy_context_add(s, "Add Cone",       "Cone",       OBJ_CONE);
@@ -343,7 +333,6 @@ void ui_properties(Scene *s, EditorUI *ui) {
                 ImGui::DragFloat3("Size (W/H/D)", obj->cubeSize, 0.1f, 0.1f, 50.0f);
                 break;
             case OBJ_SPHERE:
-            case OBJ_HEMISPHERE:
                 ImGui::DragFloat("Radius", &obj->sphereRadius, 0.05f, 0.1f, 50.0f);
                 ImGui::SliderInt("Rings",  &obj->sphereRings, 4, 64);
                 ImGui::SliderInt("Slices", &obj->sphereSlices, 4, 64);
@@ -424,7 +413,6 @@ void ui_add_object(Scene *s, EditorUI *ui) {
 
     add_object_button(ui, "Cube",       OBJ_CUBE);
     add_object_button(ui, "Sphere",     OBJ_SPHERE);
-    add_object_button(ui, "HemiSphere", OBJ_HEMISPHERE);
     add_object_button(ui, "Plane",      OBJ_PLANE);
     add_object_button(ui, "Cylinder",   OBJ_CYLINDER);
     add_object_button(ui, "Cone",       OBJ_CONE);
