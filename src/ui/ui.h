@@ -17,6 +17,8 @@ struct EditorUI {
     float vpImageW, vpImageH;
 
     float uiScale;
+    float lastFontSize;         // last rasterized font size (to detect when rebuild is needed)
+    char fontPath[512];
 
     bool showGrid;
     int gridSize;

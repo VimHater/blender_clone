@@ -13,7 +13,7 @@ void ui_init(EditorUI *ui, int vpW, int vpH) {
     ui->viewportRT = LoadRenderTexture(vpW, vpH);
     ui->viewportHovered = false;
     ui->viewportFocused = false;
-    ui->uiScale = 1.5f;
+    ui->uiScale = 1.0f;
     ui->showGrid = true;
     ui->gridSize = 10;
     ui->gridSpacing = 1.0f;

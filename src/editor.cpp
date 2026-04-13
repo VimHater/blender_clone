@@ -5,33 +5,54 @@
 #include <cstdio>
 #include <cmath>
 
+static const float BASE_FONT_SIZE = 36.0f;
+static const float GLOBAL_FONT_SCALE = 2.0f;
+
+static void rebuild_font(EditorUI *ui, float fontSize) {
+    ImGuiIO &io = ImGui::GetIO();
+    io.Fonts->Clear();
+    ImFontConfig fontCfg;
+    fontCfg.OversampleH = 2;
+    fontCfg.OversampleV = 2;
+    fontCfg.PixelSnapH = true;
+    io.Fonts->AddFontFromFileTTF(ui->fontPath, fontSize, &fontCfg);
+    io.Fonts->Build();
+    io.FontGlobalScale = GLOBAL_FONT_SCALE;
+    ui->lastFontSize = fontSize;
+}
+
 void editor_init(Editor *ed, int screenW, int screenH) {
     // window
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(screenW, screenH, "Blender Clone");
     SetTargetFPS(60);
 
-    // imgui + font
-    rlImGuiBeginInitImGui();
-    ImGuiIO &io = ImGui::GetIO();
-    char fontPath[512];
-    snprintf(fontPath, sizeof(fontPath), "%s../font/JetBrainsMonoNerdFont-Medium.ttf", GetApplicationDirectory());
-    ImFontConfig fontCfg;
-    fontCfg.OversampleH = 2;
-    fontCfg.OversampleV = 2;
-    fontCfg.PixelSnapH = true;
-    io.Fonts->AddFontFromFileTTF(fontPath, 36.0f, &fontCfg);
-    io.FontGlobalScale = 1.0f;
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    io.IniFilename = nullptr; // disable imgui.ini
-    rlImGuiEndInitImGui();
-
-    // core systems
+    // core systems (init ui early so fontPath is available)
     scene_init(&ed->scene);
     editor_camera_init(&ed->camera);
     timeline_init(&ed->timeline);
     ui_init(&ed->ui, screenW, screenH);
     shadowmap_init(&ed->shadowMap, 1024);
+
+    // store font path
+    snprintf(ed->ui.fontPath, sizeof(ed->ui.fontPath),
+             "%s../font/JetBrainsMonoNerdFont-Medium.ttf", GetApplicationDirectory());
+
+    // imgui + font
+    rlImGuiBeginInitImGui();
+    ImGuiIO &io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.IniFilename = nullptr; // disable imgui.ini
+    ImFontConfig fontCfg;
+    fontCfg.OversampleH = 2;
+    fontCfg.OversampleV = 2;
+    fontCfg.PixelSnapH = true;
+    float initSize = BASE_FONT_SIZE * ((float)screenH / 1080.0f) * ed->ui.uiScale;
+    io.Fonts->AddFontFromFileTTF(ed->ui.fontPath, initSize, &fontCfg);
+    io.FontGlobalScale = 1.0f;
+    ed->ui.lastFontSize = initSize;
+    rlImGuiEndInitImGui();
+
     ed->running = true;
 }
 
@@ -40,8 +61,13 @@ bool editor_should_close(const Editor *ed) {
 }
 
 void editor_update(Editor *ed) {
-    // font scaling
-    ImGui::GetIO().FontGlobalScale = ((float)GetScreenHeight() / 1080.0f) * ed->ui.uiScale;
+    // font scaling — rebuild atlas when target pixel size changes
+    float targetFontSize = BASE_FONT_SIZE * ((float)GetScreenHeight() / 1080.0f) * ed->ui.uiScale;
+    if (targetFontSize < 10.0f) targetFontSize = 10.0f;
+    // only rebuild if size changed by more than 1px (avoid constant rebuilds during resize)
+    if (fabsf(targetFontSize - ed->ui.lastFontSize) > 1.0f) {
+        rebuild_font(&ed->ui, targetFontSize);
+    }
 
     // timeline
     timeline_update(&ed->timeline);

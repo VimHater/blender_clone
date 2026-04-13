@@ -1,8 +1,11 @@
 #include "editor.h"
+#define DEFAULT_SCREEN_W 1920
+#define DEFAULT_SCREEN_H 1080
 
 int main() {
+
     Editor editor;
-    editor_init(&editor, 1920, 1080);
+    editor_init(&editor, DEFAULT_SCREEN_W, DEFAULT_SCREEN_H);
 
     while (!editor_should_close(&editor)) {
         editor_update(&editor);
