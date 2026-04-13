@@ -16,7 +16,7 @@ struct Scene {
 void         scene_init(Scene *s);
 int          scene_add(Scene *s, const char *name, ObjectType type);
 void         scene_remove(Scene *s, int index);
-void         scene_draw(const Scene *s, DrawMode mode);
+void         scene_draw(const Scene *s, DrawMode mode, struct LightingState *ls);
 void         scene_draw_selection(const Scene *s);
 void         scene_draw_preview(ObjectType type, Vector3 position);
 int          scene_get_children(const Scene *s, int parentIndex, int *outChildren, int maxOut);

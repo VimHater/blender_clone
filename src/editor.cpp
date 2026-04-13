@@ -60,6 +60,8 @@ void editor_init(Editor *ed, int screenW, int screenH) {
     ed->ui.lastFontSize = initSize;
     rlImGuiEndInitImGui();
 
+    lighting_init(&ed->lighting);
+
     ed->running = true;
 }
 
@@ -138,7 +140,7 @@ void editor_update(Editor *ed) {
                 const char *names[] = {
                     "None", "Cube", "Sphere", "Plane",
                     "Cylinder", "Cone", "Torus", "Knot", "Capsule", "Polygon",
-                    "Teapot", "Camera", "Model"
+                    "Teapot", "Camera", "Light", "Model"
                 };
                 int idx = scene_add(&ed->scene, names[ed->ui.placementType], ed->ui.placementType);
                 if (idx >= 0) {
@@ -339,7 +341,10 @@ void editor_draw(Editor *ed) {
             if (ed->ui.showGrid) {
                 DrawGrid(ed->ui.gridSize, ed->ui.gridSpacing);
             }
-            scene_draw(&ed->scene, ed->ui.drawMode);
+            // lighting
+            lighting_collect(&ed->lighting, &ed->scene);
+            lighting_update_shader(&ed->lighting, activeCam.position);
+            scene_draw(&ed->scene, ed->ui.drawMode, &ed->lighting);
             scene_draw_selection(&ed->scene);
             scene_draw_gizmo(&ed->scene, ed->ui.transformMode, ed->ui.gizmoActiveAxis);
             if (ed->ui.placementMode && ed->ui.placementValid) {
@@ -371,6 +376,7 @@ void editor_shutdown(Editor *ed) {
         if (obj->modelLoaded) UnloadModel(obj->model);
         if (obj->material.hasTexture) UnloadTexture(obj->material.texture);
     }
+    lighting_shutdown(&ed->lighting);
     shadowmap_unload(&ed->shadowMap);
     ui_shutdown(&ed->ui);
     rlImGuiShutdown();

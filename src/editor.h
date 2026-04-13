@@ -6,6 +6,7 @@
 #include <core/timeline.h>
 #include <core/shadow.h>
 #include <core/raycast.h>
+#include <core/lighting.h>
 #include <ui/ui.h>
 
 struct Editor {
@@ -14,6 +15,7 @@ struct Editor {
     Timeline timeline;
     EditorUI ui;
     ShadowMap shadowMap;
+    LightingState lighting;
     bool running;
 };
 

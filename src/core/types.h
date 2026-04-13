@@ -8,6 +8,7 @@
 // ---- Constants ----
 
 #define MAX_OBJECTS      256
+#define MAX_LIGHTS       8
 #define MAX_KEYFRAMES    512
 #define MAX_NAME_LEN     64
 #define MAX_CHILDREN     64
@@ -28,6 +29,7 @@ enum ObjectType {
     OBJ_POLY,
     OBJ_TEAPOT,
     OBJ_CAMERA,
+    OBJ_LIGHT,
     OBJ_MODEL_FILE,
 };
 
@@ -41,6 +43,20 @@ enum DrawMode {
     DRAW_SOLID,
     DRAW_WIREFRAME,
     DRAW_POINT,
+};
+
+enum LightType {
+    LIGHT_POINT,
+    LIGHT_DIRECTIONAL,
+};
+
+enum ShaderType {
+    SHADER_DEFAULT = 0,   // Blinn-Phong
+    SHADER_UNLIT,         // no lighting, flat color/texture
+    SHADER_TOON,          // cel shading
+    SHADER_NORMAL_VIS,    // visualize normals as color
+    SHADER_FRESNEL,       // rim/edge glow effect
+    SHADER_COUNT,
 };
 
 enum PlaybackState {
@@ -121,6 +137,14 @@ struct SceneObject {
     float camNear;
     float camFar;
     bool camOrtho;
+
+    // shader
+    ShaderType shaderType;
+
+    // light (OBJ_LIGHT)
+    LightType lightType;
+    Color lightColor;
+    float lightIntensity;
 
     // loaded model (OBJ_MODEL_FILE)
     Model model;

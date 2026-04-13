@@ -1,4 +1,5 @@
 #include "scene.h"
+#include "lighting.h"
 #include "builtin_objects/teapot.h"
 #include <rlgl.h>
 #include <cstring>
@@ -95,6 +96,9 @@ SceneObject object_default(const char *name, ObjectType type) {
     obj.camNear = 0.1f;
     obj.camFar = 1000.0f;
     obj.camOrtho = false;
+    obj.lightType = LIGHT_POINT;
+    obj.lightColor = WHITE;
+    obj.lightIntensity = 3.0f;
     obj.modelLoaded = false;
     obj.keyframeCount = 0;
 
@@ -293,22 +297,26 @@ static bool gen_object_mesh(const SceneObject *obj, Mesh *out) {
 }
 
 // draw object as a model (with optional texture)
-static void draw_model_object(const SceneObject *obj, DrawMode mode, Color c) {
+static void draw_model_object(const SceneObject *obj, DrawMode mode, Color c, Shader *shader) {
     Mesh mesh = {0};
     if (!gen_object_mesh(obj, &mesh)) return;
     Model mdl = LoadModelFromMesh(mesh);
     if (obj->material.hasTexture) {
         mdl.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = obj->material.texture;
     }
+    if (shader) {
+        mdl.materials[0].shader = *shader;
+    }
     if (mode == DRAW_SOLID)          DrawModel(mdl, Vector3{0,0,0}, 1.0f, c);
     else if (mode == DRAW_WIREFRAME) DrawModelWires(mdl, Vector3{0,0,0}, 1.0f, c);
     else                             DrawModelPoints(mdl, Vector3{0,0,0}, 1.0f, c);
-    // don't unload the texture — it belongs to the scene object
+    // clear borrowed resources before unloading model
     mdl.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = Texture2D{0};
+    mdl.materials[0].shader = Shader{0};
     UnloadModel(mdl);
 }
 
-static void draw_object(const SceneObject *obj, DrawMode mode) {
+static void draw_object(const SceneObject *obj, DrawMode mode, Shader *shader) {
     if (!obj->active || !obj->visible) return;
 
     Matrix mat = transform_to_matrix(obj->transform);
@@ -321,7 +329,7 @@ static void draw_object(const SceneObject *obj, DrawMode mode) {
     // for textured primitives (or mesh-only types), use model-based rendering
     if (textured && obj->type != OBJ_CAMERA && obj->type != OBJ_TEAPOT
         && obj->type != OBJ_MODEL_FILE) {
-        draw_model_object(obj, mode, c);
+        draw_model_object(obj, mode, c, shader);
         rlPopMatrix();
         return;
     }
@@ -374,7 +382,7 @@ static void draw_object(const SceneObject *obj, DrawMode mode) {
         case OBJ_TORUS:
         case OBJ_KNOT:
         case OBJ_POLY:
-            draw_model_object(obj, mode, c);
+            draw_model_object(obj, mode, c, shader);
             break;
         case OBJ_CAPSULE:
             if (mode == DRAW_SOLID)
@@ -391,15 +399,19 @@ static void draw_object(const SceneObject *obj, DrawMode mode) {
         case OBJ_TEAPOT:
         case OBJ_MODEL_FILE:
             if (obj->modelLoaded) {
-                // apply texture to model if present
                 Texture2D origTex = {0};
+                Shader origShader = obj->model.materials[0].shader;
                 if (textured) {
                     origTex = obj->model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture;
                     obj->model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = obj->material.texture;
                 }
+                if (shader) {
+                    obj->model.materials[0].shader = *shader;
+                }
                 if (mode == DRAW_SOLID)          DrawModel(obj->model, Vector3{0,0,0}, 1.0f, c);
                 else if (mode == DRAW_WIREFRAME) DrawModelWires(obj->model, Vector3{0,0,0}, 1.0f, c);
                 else                             DrawModelPoints(obj->model, Vector3{0,0,0}, 1.0f, c);
+                obj->model.materials[0].shader = origShader;
                 if (textured) {
                     obj->model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = origTex;
                 }
@@ -419,6 +431,20 @@ static void draw_object(const SceneObject *obj, DrawMode mode) {
             DrawLine3D(fbr, fbl, c); DrawLine3D(fbl, ftl, c);
             break;
         }
+        case OBJ_LIGHT: {
+            // draw light gizmo: small sphere with rays
+            Color lc = obj->lightColor;
+            DrawSphereWires(Vector3{0,0,0}, 0.15f, 8, 8, lc);
+            float r = 0.5f;
+            DrawLine3D(Vector3{-r,0,0}, Vector3{r,0,0}, lc);
+            DrawLine3D(Vector3{0,-r,0}, Vector3{0,r,0}, lc);
+            DrawLine3D(Vector3{0,0,-r}, Vector3{0,0,r}, lc);
+            // diagonal rays
+            float d = r * 0.7f;
+            DrawLine3D(Vector3{-d,-d,0}, Vector3{d,d,0}, lc);
+            DrawLine3D(Vector3{-d,d,0}, Vector3{d,-d,0}, lc);
+            break;
+        }
         default:
             break;
     }
@@ -426,9 +452,19 @@ static void draw_object(const SceneObject *obj, DrawMode mode) {
     rlPopMatrix();
 }
 
-void scene_draw(const Scene *s, DrawMode mode) {
+void scene_draw(const Scene *s, DrawMode mode, LightingState *ls) {
     for (int i = 0; i < s->objectCount; i++) {
-        draw_object(&s->objects[i], mode);
+        const SceneObject *obj = &s->objects[i];
+        Shader *shader = NULL;
+        ShaderType st = obj->shaderType;
+        if (ls && ls->shaderLoaded[st]) {
+            shader = &ls->shaders[st];
+            BeginShaderMode(*shader);
+        }
+        draw_object(obj, mode, shader);
+        if (shader) {
+            EndShaderMode();
+        }
     }
 }
 
@@ -525,6 +561,7 @@ static float object_radius(const SceneObject *obj) {
         case OBJ_CAPSULE:   return fmaxf(obj->capsuleRadius, obj->capsuleHeight * 0.5f + obj->capsuleRadius) * ms;
         case OBJ_POLY:      return obj->polyRadius * ms;
         case OBJ_CAMERA:    return 0.5f;
+        case OBJ_LIGHT:     return 0.5f;
         case OBJ_TEAPOT:
         case OBJ_MODEL_FILE:
             if (obj->modelLoaded) {
@@ -706,6 +743,17 @@ void scene_draw_preview(ObjectType type, Vector3 pos) {
         case OBJ_CAMERA:
             DrawCubeWires(Vector3{0,0,0}, 0.3f, 0.2f, 0.3f, wire);
             break;
+        case OBJ_LIGHT: {
+            DrawSphereWires(Vector3{0,0,0}, 0.15f, 8, 8, wire);
+            float r = 0.5f;
+            DrawLine3D(Vector3{-r,0,0}, Vector3{r,0,0}, wire);
+            DrawLine3D(Vector3{0,-r,0}, Vector3{0,r,0}, wire);
+            DrawLine3D(Vector3{0,0,-r}, Vector3{0,0,r}, wire);
+            float dd = r * 0.7f;
+            DrawLine3D(Vector3{-dd,-dd,0}, Vector3{dd,dd,0}, wire);
+            DrawLine3D(Vector3{-dd,dd,0}, Vector3{dd,-dd,0}, wire);
+            break;
+        }
         default:
             break;
     }

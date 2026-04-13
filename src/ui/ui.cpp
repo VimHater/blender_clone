@@ -343,7 +343,15 @@ void ui_properties(Scene *s, EditorUI *ui) {
         ImGui::DragFloat3("Scale",    &obj->transform.scale.x, 0.05f, 0.01f, 100.0f);
     }
 
-    if (ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (obj->type != OBJ_LIGHT && obj->type != OBJ_CAMERA && ImGui::CollapsingHeader("Shader", ImGuiTreeNodeFlags_DefaultOpen)) {
+        const char *shaderNames[] = { "Default (Blinn-Phong)", "Unlit", "Toon", "Normal", "Fresnel" };
+        int cur = (int)obj->shaderType;
+        if (ImGui::Combo("##ShaderType", &cur, shaderNames, SHADER_COUNT)) {
+            obj->shaderType = (ShaderType)cur;
+        }
+    }
+
+    if (obj->type != OBJ_LIGHT && ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen)) {
         float col[4] = {
             obj->material.color.r / 255.0f,
             obj->material.color.g / 255.0f,
@@ -462,6 +470,28 @@ void ui_properties(Scene *s, EditorUI *ui) {
                 if (ImGui::Checkbox("Orthographic", &ortho)) obj->camOrtho = ortho;
                 break;
             }
+            case OBJ_LIGHT: {
+                const char *ltNames[] = { "Point", "Directional" };
+                int lt = (int)obj->lightType;
+                if (ImGui::Combo("Type##light", &lt, ltNames, 2)) {
+                    obj->lightType = (LightType)lt;
+                }
+                float lc[3] = {
+                    obj->lightColor.r / 255.0f,
+                    obj->lightColor.g / 255.0f,
+                    obj->lightColor.b / 255.0f,
+                };
+                if (ImGui::ColorEdit3("Light Color", lc)) {
+                    obj->lightColor = Color{
+                        (uint8_t)(lc[0] * 255),
+                        (uint8_t)(lc[1] * 255),
+                        (uint8_t)(lc[2] * 255),
+                        255
+                    };
+                }
+                ImGui::DragFloat("Intensity", &obj->lightIntensity, 0.05f, 0.0f, 10.0f);
+                break;
+            }
             case OBJ_MODEL_FILE:
                 ImGui::Text("Path: %s", obj->modelPath);
                 if (obj->modelLoaded) {
@@ -510,6 +540,7 @@ void ui_add_object(Scene *s, EditorUI *ui) {
     add_object_button(ui, "Polygon",    OBJ_POLY);
     add_object_button(ui, "Teapot",     OBJ_TEAPOT);
     add_object_button(ui, "Camera",     OBJ_CAMERA);
+    add_object_button(ui, "Light",      OBJ_LIGHT);
 
     ImGui::Separator();
     ImGui::Text("Load Model File");
