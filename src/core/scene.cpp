@@ -793,11 +793,11 @@ void object_set_texture(SceneObject *obj, const char *path) {
 }
 
 void object_set_texture_builtin(SceneObject *obj, const char *name,
-                                const unsigned char *data, unsigned int len) {
+                                const unsigned char *data, unsigned int len, const char *fmt) {
     if (obj->material.hasTexture) {
         UnloadTexture(obj->material.texture);
     }
-    Image img = LoadImageFromMemory(".png", data, len);
+    Image img = LoadImageFromMemory(fmt, data, len);
     obj->material.texture = LoadTextureFromImage(img);
     UnloadImage(img);
     obj->material.hasTexture = (obj->material.texture.id != 0);

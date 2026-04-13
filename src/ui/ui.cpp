@@ -5,6 +5,11 @@
 #include <cstdio>
 #include <cstdint>
 #include "builtin_textures/checkerboard.h"
+#include "builtin_textures/brick.h"
+#include "builtin_textures/sand.h"
+#include "builtin_textures/brushed_metal.h"
+#include "builtin_textures/wood.h"
+#include "builtin_textures/grass.h"
 
 // ---- Init / Shutdown ----
 
@@ -363,20 +368,34 @@ void ui_properties(Scene *s, EditorUI *ui) {
             ImGui::Text("Size: %dx%d", obj->material.texture.width, obj->material.texture.height);
         }
         {
-            const char *texOptions[] = { "None", "Checkerboard", "From file..." };
+            const char *texOptions[] = {
+                "None", "Checkerboard", "Brick", "Sand",
+                "Brushed Metal", "Wood", "Grass", "From file..."
+            };
+            static const int TEX_COUNT = 8;
+            static const int TEX_FROM_FILE = 7;
             static int texSel = 0;
             // only sync to None if we're not already in "From file..." mode (waiting for path input)
-            if (!obj->material.hasTexture && texSel != 2) texSel = 0;
-            if (ImGui::Combo("##TexSelect", &texSel, texOptions, 3)) {
-                if (texSel == 0) {
-                    object_clear_texture(obj);
-                } else if (texSel == 1) {
-                    object_set_texture_builtin(obj, "Checkerboard",
-                        CHECKERBOARD_PNG, CHECKERBOARD_PNG_LEN);
+            if (!obj->material.hasTexture && texSel != TEX_FROM_FILE) texSel = 0;
+            if (ImGui::Combo("##TexSelect", &texSel, texOptions, TEX_COUNT)) {
+                switch (texSel) {
+                    case 0: object_clear_texture(obj); break;
+                    case 1: object_set_texture_builtin(obj, "Checkerboard",
+                                CHECKERBOARD_PNG, CHECKERBOARD_PNG_LEN, ".png"); break;
+                    case 2: object_set_texture_builtin(obj, "Brick",
+                                BRICK_BMP, BRICK_BMP_LEN, ".bmp"); break;
+                    case 3: object_set_texture_builtin(obj, "Sand",
+                                SAND_PNG, SAND_PNG_LEN, ".png"); break;
+                    case 4: object_set_texture_builtin(obj, "Brushed Metal",
+                                BRUSHED_METAL_PNG, BRUSHED_METAL_PNG_LEN, ".png"); break;
+                    case 5: object_set_texture_builtin(obj, "Wood",
+                                WOOD_PNG, WOOD_PNG_LEN, ".png"); break;
+                    case 6: object_set_texture_builtin(obj, "Grass",
+                                GRASS_PNG, GRASS_PNG_LEN, ".png"); break;
+                    default: break;
                 }
-                // texSel == 2 handled below
             }
-            if (texSel == 2) {
+            if (texSel == TEX_FROM_FILE) {
                 static char texPathBuf[256] = {};
                 ImGui::InputText("Path##tex", texPathBuf, sizeof(texPathBuf));
                 ImGui::SameLine();
@@ -387,7 +406,7 @@ void ui_properties(Scene *s, EditorUI *ui) {
                             snprintf(ui->errorMessage, sizeof(ui->errorMessage),
                                      "Failed to load texture:\n%s", texPathBuf);
                             ui->showErrorPopup = true;
-                            texSel = 0;
+                            texSel = 0;  // reset on failure
                         }
                         texPathBuf[0] = '\0';
                     }

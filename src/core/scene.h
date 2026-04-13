@@ -47,7 +47,7 @@ GizmoAxis    gizmo_hit_test(const SceneObject *obj, Ray ray, TransformMode mode)
 // texture helpers
 Texture2D load_bitmap(const char *path);
 void      object_set_texture(SceneObject *obj, const char *path);
-void      object_set_texture_builtin(SceneObject *obj, const char *name, const unsigned char *data, unsigned int len);
+void      object_set_texture_builtin(SceneObject *obj, const char *name, const unsigned char *data, unsigned int len, const char *fmt);
 void      object_clear_texture(SceneObject *obj);
 
 #endif // CORE_SCENE_H
