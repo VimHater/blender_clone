@@ -492,6 +492,8 @@ Model load_model_from_obj_data(const char *objData) {
 }
 
 // ---- Model Loading ----
+// TODO: support .obj with .mtl files (raylib hangs loading many textures via mtl;
+//       need to strip mtllib, load geometry only, then apply textures manually)
 
 int scene_add_model(Scene *s, const char *filePath) {
     if (s->objectCount >= MAX_OBJECTS) return -1;

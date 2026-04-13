@@ -32,14 +32,8 @@ void ui_init(EditorUI *ui, int vpW, int vpH) {
 }
 
 void ui_update_layout(EditorUI *ui) {
-    int sw = GetScreenWidth();
-    int sh = GetScreenHeight();
-    if (sw != ui->viewportW || sh != ui->viewportH) {
-        UnloadRenderTexture(ui->viewportRT);
-        ui->viewportRT = LoadRenderTexture(sw, sh);
-        ui->viewportW = sw;
-        ui->viewportH = sh;
-    }
+    // render texture is now resized in ui_viewport to match panel size
+    (void)ui;
 }
 
 void ui_shutdown(EditorUI *ui) {
@@ -147,17 +141,26 @@ void ui_viewport(EditorUI *ui) {
     ui->viewportHovered = ImGui::IsWindowHovered();
     ui->viewportFocused = ImGui::IsWindowFocused();
 
-    // track image rect for mouse-to-world mapping
     ImVec2 cpos = ImGui::GetCursorScreenPos();
     ImVec2 csize = ImGui::GetContentRegionAvail();
-    float texW = (float)ui->viewportRT.texture.width;
-    float texH = (float)ui->viewportRT.texture.height;
-    float scale = csize.x / texW;
-    if (texH * scale > csize.y) scale = csize.y / texH;
-    ui->vpImageW = texW * scale;
-    ui->vpImageH = texH * scale;
-    ui->vpImageX = cpos.x + (csize.x - ui->vpImageW) * 0.5f;
-    ui->vpImageY = cpos.y + (csize.y - ui->vpImageH) * 0.5f;
+    int panelW = (int)csize.x;
+    int panelH = (int)csize.y;
+    if (panelW < 1) panelW = 1;
+    if (panelH < 1) panelH = 1;
+
+    // resize render texture to match panel exactly
+    if (panelW != ui->viewportW || panelH != ui->viewportH) {
+        UnloadRenderTexture(ui->viewportRT);
+        ui->viewportRT = LoadRenderTexture(panelW, panelH);
+        ui->viewportW = panelW;
+        ui->viewportH = panelH;
+    }
+
+    // image fills panel 1:1 — no letterboxing
+    ui->vpImageX = cpos.x;
+    ui->vpImageY = cpos.y;
+    ui->vpImageW = (float)panelW;
+    ui->vpImageH = (float)panelH;
 
     rlImGuiImageRenderTextureFit(&ui->viewportRT, true);
     ImGui::End();
