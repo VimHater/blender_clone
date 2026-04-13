@@ -4,14 +4,15 @@
 
 int main() {
 
-    Editor editor;
-    editor_init(&editor, DEFAULT_SCREEN_W, DEFAULT_SCREEN_H);
+    Editor *editor = new Editor();
+    editor_init(editor, DEFAULT_SCREEN_W, DEFAULT_SCREEN_H);
 
-    while (!editor_should_close(&editor)) {
-        editor_update(&editor);
-        editor_draw(&editor);
+    while (!editor_should_close(editor)) {
+        editor_update(editor);
+        editor_draw(editor);
     }
 
-    editor_shutdown(&editor);
+    editor_shutdown(editor);
+    delete editor;
     return 0;
 }
