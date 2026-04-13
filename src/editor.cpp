@@ -35,9 +35,15 @@ void editor_init(Editor *ed, int screenW, int screenH) {
     ui_init(&ed->ui, screenW, screenH);
     shadowmap_init(&ed->shadowMap, 1024);
 
-    // store font path
-    snprintf(ed->ui.fontPath, sizeof(ed->ui.fontPath),
-             "%s../font/JetBrainsMonoNerdFont-Medium.ttf", GetApplicationDirectory());
+    // store font path — try ../font/ first (build/), then ../../font/ (build/Debug/)
+    {
+        const char *appDir = GetApplicationDirectory();
+        const char *fontName = "JetBrainsMonoNerdFont-Medium.ttf";
+        snprintf(ed->ui.fontPath, sizeof(ed->ui.fontPath), "%s../font/%s", appDir, fontName);
+        if (!FileExists(ed->ui.fontPath)) {
+            snprintf(ed->ui.fontPath, sizeof(ed->ui.fontPath), "%s../../font/%s", appDir, fontName);
+        }
+    }
 
     // imgui + font
     rlImGuiBeginInitImGui();
