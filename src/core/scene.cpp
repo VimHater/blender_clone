@@ -57,6 +57,8 @@ SceneObject object_default(const char *name, ObjectType type) {
     obj.parentIndex = -1;
     obj.transform = transform_default();
     obj.material = material_default();
+
+    // per-type defaults
     obj.cubeSize[0] = 2.0f;
     obj.cubeSize[1] = 2.0f;
     obj.cubeSize[2] = 2.0f;
@@ -66,6 +68,17 @@ SceneObject object_default(const char *name, ObjectType type) {
     obj.cylinderRadiusTop = 0.5f;
     obj.cylinderRadiusBottom = 0.5f;
     obj.cylinderHeight = 2.0f;
+    obj.torusRadius = 1.0f;
+    obj.torusSize = 0.3f;
+    obj.torusRadSeg = 16;
+    obj.torusSides = 16;
+    obj.capsuleRadius = 0.5f;
+    obj.capsuleHeight = 2.0f;
+    obj.polySides = 6;
+    obj.polyRadius = 1.0f;
+    obj.coneRadius = 0.5f;
+    obj.coneHeight = 2.0f;
+    obj.coneSlices = 16;
     obj.modelLoaded = false;
     obj.keyframeCount = 0;
     return obj;
@@ -125,24 +138,58 @@ static void draw_object(const SceneObject *obj) {
     rlPushMatrix();
     rlMultMatrixf(MatrixToFloat(mat));
 
+    Color c = obj->material.color;
+
     switch (obj->type) {
         case OBJ_CUBE:
-            DrawCube(Vector3{0,0,0}, obj->cubeSize[0], obj->cubeSize[1], obj->cubeSize[2], obj->material.color);
+            DrawCube(Vector3{0,0,0}, obj->cubeSize[0], obj->cubeSize[1], obj->cubeSize[2], c);
             DrawCubeWires(Vector3{0,0,0}, obj->cubeSize[0], obj->cubeSize[1], obj->cubeSize[2], BLACK);
             break;
         case OBJ_SPHERE:
-            DrawSphere(Vector3{0,0,0}, obj->sphereRadius, obj->material.color);
+            DrawSphereEx(Vector3{0,0,0}, obj->sphereRadius, obj->sphereRings, obj->sphereSlices, c);
+            break;
+        case OBJ_HEMISPHERE:
+            DrawSphereEx(Vector3{0,0,0}, obj->sphereRadius, obj->sphereRings, obj->sphereSlices, c);
             break;
         case OBJ_PLANE:
-            DrawPlane(Vector3{0,0,0}, Vector2{obj->cubeSize[0], obj->cubeSize[2]}, obj->material.color);
+            DrawPlane(Vector3{0,0,0}, Vector2{obj->cubeSize[0], obj->cubeSize[2]}, c);
             break;
         case OBJ_CYLINDER:
             DrawCylinder(Vector3{0,0,0}, obj->cylinderRadiusTop, obj->cylinderRadiusBottom,
-                         obj->cylinderHeight, 16, obj->material.color);
+                         obj->cylinderHeight, 16, c);
             break;
+        case OBJ_CONE:
+            DrawCylinder(Vector3{0,0,0}, 0.0f, obj->coneRadius, obj->coneHeight, obj->coneSlices, c);
+            break;
+        case OBJ_TORUS: {
+            Mesh mesh = GenMeshTorus(obj->torusRadius, obj->torusSize, obj->torusRadSeg, obj->torusSides);
+            Model mdl = LoadModelFromMesh(mesh);
+            DrawModel(mdl, Vector3{0,0,0}, 1.0f, c);
+            UnloadModel(mdl);
+            break;
+        }
+        case OBJ_KNOT: {
+            Mesh mesh = GenMeshKnot(obj->torusRadius, obj->torusSize, obj->torusRadSeg, obj->torusSides);
+            Model mdl = LoadModelFromMesh(mesh);
+            DrawModel(mdl, Vector3{0,0,0}, 1.0f, c);
+            UnloadModel(mdl);
+            break;
+        }
+        case OBJ_CAPSULE:
+            DrawCapsule(Vector3{0, -obj->capsuleHeight * 0.5f, 0},
+                        Vector3{0,  obj->capsuleHeight * 0.5f, 0},
+                        obj->capsuleRadius, 16, 8, c);
+            break;
+        case OBJ_POLY: {
+            Mesh mesh = GenMeshPoly(obj->polySides, obj->polyRadius);
+            Model mdl = LoadModelFromMesh(mesh);
+            DrawModel(mdl, Vector3{0,0,0}, 1.0f, c);
+            UnloadModel(mdl);
+            break;
+        }
         case OBJ_MODEL_FILE:
             if (obj->modelLoaded) {
-                DrawModel(obj->model, Vector3{0,0,0}, 1.0f, obj->material.color);
+                DrawModel(obj->model, Vector3{0,0,0}, 1.0f, c);
             }
             break;
         default:
@@ -156,6 +203,105 @@ void scene_draw(const Scene *s) {
     for (int i = 0; i < s->objectCount; i++) {
         draw_object(&s->objects[i]);
     }
+}
+
+static void draw_selection_outline(const SceneObject *obj) {
+    if (!obj->active || !obj->visible) return;
+
+    Color sel = ORANGE;
+    Matrix mat = transform_to_matrix(obj->transform);
+    rlPushMatrix();
+    rlMultMatrixf(MatrixToFloat(mat));
+
+    switch (obj->type) {
+        case OBJ_CUBE:
+            DrawCubeWires(Vector3{0,0,0}, obj->cubeSize[0], obj->cubeSize[1], obj->cubeSize[2], sel);
+            break;
+        case OBJ_SPHERE:
+        case OBJ_HEMISPHERE:
+            DrawSphereWires(Vector3{0,0,0}, obj->sphereRadius, obj->sphereRings, obj->sphereSlices, sel);
+            break;
+        case OBJ_PLANE:
+            DrawCubeWires(Vector3{0,0,0}, obj->cubeSize[0], 0.01f, obj->cubeSize[2], sel);
+            break;
+        case OBJ_CYLINDER:
+            DrawCylinderWires(Vector3{0,0,0}, obj->cylinderRadiusTop, obj->cylinderRadiusBottom,
+                              obj->cylinderHeight, 16, sel);
+            break;
+        case OBJ_CONE:
+            DrawCylinderWires(Vector3{0,0,0}, 0.0f, obj->coneRadius, obj->coneHeight, obj->coneSlices, sel);
+            break;
+        case OBJ_TORUS:
+        case OBJ_KNOT:
+        case OBJ_POLY: {
+            // approximate with a bounding sphere wire
+            DrawSphereWires(Vector3{0,0,0}, obj->torusRadius + obj->torusSize, 8, 8, sel);
+            break;
+        }
+        case OBJ_CAPSULE:
+            DrawCapsuleWires(Vector3{0, -obj->capsuleHeight * 0.5f, 0},
+                             Vector3{0,  obj->capsuleHeight * 0.5f, 0},
+                             obj->capsuleRadius, 16, 8, sel);
+            break;
+        case OBJ_MODEL_FILE:
+            if (obj->modelLoaded) {
+                DrawModelWires(obj->model, Vector3{0,0,0}, 1.0f, sel);
+            }
+            break;
+        default:
+            break;
+    }
+
+    rlPopMatrix();
+}
+
+void scene_draw_selection(const Scene *s) {
+    if (s->selectedIndex < 0 || s->selectedIndex >= s->objectCount) return;
+    draw_selection_outline(&s->objects[s->selectedIndex]);
+}
+
+void scene_draw_preview(ObjectType type, Vector3 pos) {
+    Color ghost = Color{0, 200, 255, 120};
+    Color wire  = Color{0, 200, 255, 200};
+
+    rlPushMatrix();
+    rlTranslatef(pos.x, pos.y, pos.z);
+
+    switch (type) {
+        case OBJ_CUBE:
+            DrawCube(Vector3{0,0,0}, 2, 2, 2, ghost);
+            DrawCubeWires(Vector3{0,0,0}, 2, 2, 2, wire);
+            break;
+        case OBJ_SPHERE:
+        case OBJ_HEMISPHERE:
+            DrawSphereWires(Vector3{0,0,0}, 1.0f, 16, 16, wire);
+            break;
+        case OBJ_PLANE:
+            DrawPlane(Vector3{0,0,0}, Vector2{2, 2}, ghost);
+            break;
+        case OBJ_CYLINDER:
+            DrawCylinderWires(Vector3{0,0,0}, 0.5f, 0.5f, 2.0f, 16, wire);
+            break;
+        case OBJ_CONE:
+            DrawCylinderWires(Vector3{0,0,0}, 0.0f, 0.5f, 2.0f, 16, wire);
+            break;
+        case OBJ_TORUS:
+            DrawSphereWires(Vector3{0,0,0}, 1.3f, 8, 8, wire);
+            break;
+        case OBJ_KNOT:
+            DrawSphereWires(Vector3{0,0,0}, 1.3f, 8, 8, wire);
+            break;
+        case OBJ_CAPSULE:
+            DrawCapsuleWires(Vector3{0, -1, 0}, Vector3{0, 1, 0}, 0.5f, 16, 8, wire);
+            break;
+        case OBJ_POLY:
+            DrawSphereWires(Vector3{0,0,0}, 1.0f, 8, 8, wire);
+            break;
+        default:
+            break;
+    }
+
+    rlPopMatrix();
 }
 
 int scene_get_children(const Scene *s, int parentIndex, int *outChildren, int maxOut) {

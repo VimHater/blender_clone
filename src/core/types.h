@@ -18,8 +18,14 @@ enum ObjectType {
     OBJ_NONE = 0,
     OBJ_CUBE,
     OBJ_SPHERE,
+    OBJ_HEMISPHERE,
     OBJ_PLANE,
     OBJ_CYLINDER,
+    OBJ_CONE,
+    OBJ_TORUS,
+    OBJ_KNOT,
+    OBJ_CAPSULE,
+    OBJ_POLY,
     OBJ_MODEL_FILE,
 };
 
@@ -72,14 +78,33 @@ struct SceneObject {
     ObjectTransform transform;
     ObjectMaterial material;
 
-    // primitive params
-    float cubeSize[3];      // w, h, d for cubes
+    // primitive params (shared across types where applicable)
+    float cubeSize[3];      // w, h, d for cubes / plane width+length
     float sphereRadius;
     float cylinderRadiusTop;
     float cylinderRadiusBottom;
     float cylinderHeight;
     int sphereRings;
     int sphereSlices;
+
+    // torus / knot
+    float torusRadius;
+    float torusSize;
+    int torusRadSeg;
+    int torusSides;
+
+    // capsule
+    float capsuleRadius;
+    float capsuleHeight;
+
+    // polygon
+    int polySides;
+    float polyRadius;
+
+    // cone
+    float coneRadius;
+    float coneHeight;
+    int coneSlices;
 
     // loaded model (OBJ_MODEL_FILE)
     Model model;

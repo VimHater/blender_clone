@@ -5,22 +5,6 @@
 #include "core/camera.h"
 #include "core/timeline.h"
 
-// Layout proportions (fraction of screen)
-#define UI_HIERARCHY_WIDTH_RATIO  0.15625f  // 300/1920
-#define UI_PROPERTIES_WIDTH_RATIO 0.18229f  // 350/1920
-#define UI_TIMELINE_HEIGHT_RATIO  0.23148f  // 250/1080
-#define UI_MENUBAR_HEIGHT         50.0f
-
-struct UILayout {
-    float screenW;
-    float screenH;
-    float menuBarH;
-    float hierarchyW;
-    float propertiesW;
-    float timelineH;
-    float viewportX, viewportY, viewportW, viewportH;
-};
-
 struct EditorUI {
     RenderTexture2D viewportRT;
     int viewportW;
@@ -28,7 +12,11 @@ struct EditorUI {
     bool viewportHovered;
     bool viewportFocused;
 
-    UILayout layout;
+    // viewport image rect (screen-space, after fit+center)
+    float vpImageX, vpImageY;
+    float vpImageW, vpImageH;
+
+    float uiScale;
 
     bool showGrid;
     int gridSize;
@@ -38,16 +26,29 @@ struct EditorUI {
     bool showTimeline;
     bool showHierarchy;
     bool showProperties;
+    bool showAddObject;
+    bool showCamera;
+
+    bool dockspaceInitialized;
+
+    // placement mode
+    bool placementMode;
+    ObjectType placementType;
+    Vector3 placementPos;
+    bool placementValid;    // mouse is over viewport and hit the ground plane
 };
 
 void ui_init(EditorUI *ui, int vpW, int vpH);
 void ui_update_layout(EditorUI *ui);
 void ui_shutdown(EditorUI *ui);
 
+void ui_dockspace(EditorUI *ui);
 void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui);
 void ui_viewport(EditorUI *ui);
 void ui_hierarchy(Scene *s, EditorUI *ui);
 void ui_properties(Scene *s, EditorUI *ui);
+void ui_add_object(Scene *s, EditorUI *ui);
+void ui_camera(EditorCamera *ec, EditorUI *ui);
 void ui_timeline(Scene *s, Timeline *tl, EditorUI *ui);
 
 #endif // UI_UI_H

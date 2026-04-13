@@ -12,7 +12,10 @@ struct EditorCamera {
     float zoomSpeed;
     float panSpeed;
     float orbitSpeed;
+    float moveSpeed;        // WASD speed
     float fov;
+    float nearPlane;
+    float farPlane;
     bool ortho;
 };
 

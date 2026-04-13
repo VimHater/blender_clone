@@ -1,7 +1,9 @@
 #include "editor.h"
 #include "rlImGui.h"
+#include "rlgl.h"
 #include "imgui.h"
 #include <cstdio>
+#include <cmath>
 
 void editor_init(Editor *ed, int screenW, int screenH) {
     // window
@@ -20,6 +22,8 @@ void editor_init(Editor *ed, int screenW, int screenH) {
     fontCfg.PixelSnapH = true;
     io.Fonts->AddFontFromFileTTF(fontPath, 36.0f, &fontCfg);
     io.FontGlobalScale = 1.0f;
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.IniFilename = nullptr; // disable imgui.ini
     rlImGuiEndInitImGui();
 
     // core systems
@@ -29,18 +33,6 @@ void editor_init(Editor *ed, int screenW, int screenH) {
     ui_init(&ed->ui, screenW, screenH);
     shadowmap_init(&ed->shadowMap, 1024);
     ed->running = true;
-
-    // default scene objects
-    int cubeIdx = scene_add(&ed->scene, "Cube", OBJ_CUBE);
-    ed->scene.objects[cubeIdx].material.color = WHITE;
-    ed->scene.objects[cubeIdx].cubeSize[0] = 2.0f;
-    ed->scene.objects[cubeIdx].cubeSize[1] = 2.0f;
-    ed->scene.objects[cubeIdx].cubeSize[2] = 2.0f;
-
-    int sphereIdx = scene_add(&ed->scene, "Sphere", OBJ_SPHERE);
-    ed->scene.objects[sphereIdx].transform.position = Vector3{0, 0, 3};
-    ed->scene.objects[sphereIdx].material.color = RED;
-    ed->scene.objects[sphereIdx].sphereRadius = 2.0f;
 }
 
 bool editor_should_close(const Editor *ed) {
@@ -49,7 +41,7 @@ bool editor_should_close(const Editor *ed) {
 
 void editor_update(Editor *ed) {
     // font scaling
-    ImGui::GetIO().FontGlobalScale = (float)GetScreenHeight() / 1080.0f;
+    ImGui::GetIO().FontGlobalScale = ((float)GetScreenHeight() / 1080.0f) * ed->ui.uiScale;
 
     // timeline
     timeline_update(&ed->timeline);
@@ -66,19 +58,67 @@ void editor_update(Editor *ed) {
         }
     }
 
-    // camera
-    bool camInput = ed->ui.viewportHovered && !ImGui::GetIO().WantCaptureMouse;
-    editor_camera_update(&ed->camera, camInput);
+    // camera (disable orbit/pan when in placement mode so clicks go to placement)
+    editor_camera_update(&ed->camera,
+        ed->ui.viewportHovered && !ed->ui.placementMode && !ImGui::GetIO().WantCaptureKeyboard);
 
-    // click to select
-    if (ed->ui.viewportHovered && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !ImGui::GetIO().WantCaptureMouse) {
+    // placement mode: map mouse to ground plane y=0
+    if (ed->ui.placementMode) {
         Vector2 mouse = GetMousePosition();
-        Ray ray = GetScreenToWorldRay(mouse, ed->camera.cam);
-        RayHitResult hit = raycast_scene(&ed->scene, ray);
-        if (hit.hit) {
-            ed->scene.selectedIndex = hit.objectIndex;
+        // map screen mouse to viewport-local UV
+        float localX = (mouse.x - ed->ui.vpImageX) / ed->ui.vpImageW;
+        float localY = (mouse.y - ed->ui.vpImageY) / ed->ui.vpImageH;
+
+        bool inViewport = localX >= 0 && localX <= 1 && localY >= 0 && localY <= 1;
+        if (inViewport) {
+            // map UV to render texture pixel coords
+            Vector2 rtMouse = { localX * (float)ed->ui.viewportW,
+                                localY * (float)ed->ui.viewportH };
+            Ray ray = GetScreenToWorldRay(rtMouse, ed->camera.cam);
+
+            // intersect with ground plane y=0
+            if (ray.direction.y != 0.0f) {
+                float t = -ray.position.y / ray.direction.y;
+                if (t > 0.0f) {
+                    ed->ui.placementPos = Vector3{
+                        ray.position.x + ray.direction.x * t,
+                        0.0f,
+                        ray.position.z + ray.direction.z * t
+                    };
+                    ed->ui.placementValid = true;
+                } else {
+                    ed->ui.placementValid = false;
+                }
+            } else {
+                ed->ui.placementValid = false;
+            }
+
+            // left-click to place
+            if (ed->ui.placementValid && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                const char *names[] = {
+                    "None", "Cube", "Sphere", "HemiSphere", "Plane",
+                    "Cylinder", "Cone", "Torus", "Knot", "Capsule", "Polygon", "Model"
+                };
+                int idx = scene_add(&ed->scene, names[ed->ui.placementType], ed->ui.placementType);
+                if (idx >= 0) {
+                    ed->scene.objects[idx].transform.position = ed->ui.placementPos;
+                    ed->scene.selectedIndex = idx;
+                }
+                ed->ui.placementMode = false;
+                ed->ui.placementValid = false;
+            }
+        } else {
+            ed->ui.placementValid = false;
+        }
+
+        // cancel placement
+        if (IsKeyPressed(KEY_ESCAPE) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+            ed->ui.placementMode = false;
+            ed->ui.placementValid = false;
         }
     }
+
+    // TODO: add viewport click-to-select (raycast picking in render texture)
 
     // delete key
     if (ed->scene.selectedIndex >= 0 && IsKeyPressed(KEY_DELETE) && !ImGui::GetIO().WantCaptureKeyboard) {
@@ -93,10 +133,29 @@ void editor_draw(Editor *ed) {
     BeginTextureMode(ed->ui.viewportRT);
         ClearBackground(DARKGRAY);
         BeginMode3D(ed->camera.cam);
+            // override near/far clipping planes
+            {
+                double aspect = (double)ed->ui.viewportW / (double)ed->ui.viewportH;
+                Matrix proj;
+                if (ed->camera.ortho) {
+                    double top = ed->camera.fov / 2.0;
+                    double right = top * aspect;
+                    proj = MatrixOrtho(-right, right, -top, top,
+                                       ed->camera.nearPlane, ed->camera.farPlane);
+                } else {
+                    proj = MatrixPerspective(ed->camera.fov * DEG2RAD, aspect,
+                                             ed->camera.nearPlane, ed->camera.farPlane);
+                }
+                rlSetMatrixProjection(proj);
+            }
             if (ed->ui.showGrid) {
                 DrawGrid(ed->ui.gridSize, ed->ui.gridSpacing);
             }
             scene_draw(&ed->scene);
+            scene_draw_selection(&ed->scene);
+            if (ed->ui.placementMode && ed->ui.placementValid) {
+                scene_draw_preview(ed->ui.placementType, ed->ui.placementPos);
+            }
         EndMode3D();
     EndTextureMode();
 
@@ -105,8 +164,11 @@ void editor_draw(Editor *ed) {
         ClearBackground(Color{30, 30, 30, 255});
         rlImGuiBegin();
             ui_menu_bar(&ed->scene, &ed->camera, &ed->timeline, &ed->ui);
+            ui_dockspace(&ed->ui);
             ui_viewport(&ed->ui);
             ui_hierarchy(&ed->scene, &ed->ui);
+            ui_add_object(&ed->scene, &ed->ui);
+            ui_camera(&ed->camera, &ed->ui);
             ui_properties(&ed->scene, &ed->ui);
             ui_timeline(&ed->scene, &ed->timeline, &ed->ui);
         rlImGuiEnd();

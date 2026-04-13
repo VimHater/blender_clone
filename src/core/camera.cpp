@@ -9,7 +9,10 @@ void editor_camera_init(EditorCamera *ec) {
     ec->zoomSpeed = 1.5f;
     ec->panSpeed = 0.01f;
     ec->orbitSpeed = 0.003f;
+    ec->moveSpeed = 10.0f;
     ec->fov = 45.0f;
+    ec->nearPlane = 0.1f;
+    ec->farPlane = 1000.0f;
     ec->ortho = false;
     editor_camera_sync(ec);
 }
@@ -25,6 +28,7 @@ void editor_camera_sync(EditorCamera *ec) {
     ec->cam.up = Vector3{0, 1, 0};
     ec->cam.fovy = ec->fov;
     ec->cam.projection = ec->ortho ? CAMERA_ORTHOGRAPHIC : CAMERA_PERSPECTIVE;
+    // raylib doesn't expose near/far on Camera3D directly; we set them via rlgl in BeginMode3D
 }
 
 void editor_camera_update(EditorCamera *ec, bool inputAllowed) {
@@ -52,6 +56,22 @@ void editor_camera_update(EditorCamera *ec, bool inputAllowed) {
         if (ec->distance < 1.0f) ec->distance = 1.0f;
         if (ec->distance > 200.0f) ec->distance = 200.0f;
     }
+
+    // WASD movement (moves the target point)
+    float dt = GetFrameTime();
+    float speed = ec->moveSpeed * dt;
+    Vector3 forward = Vector3Normalize(Vector3Subtract(ec->cam.target, ec->cam.position));
+    Vector3 right = Vector3Normalize(Vector3CrossProduct(forward, ec->cam.up));
+    // project forward onto XZ plane for horizontal movement
+    Vector3 forwardXZ = Vector3Normalize(Vector3{forward.x, 0, forward.z});
+    Vector3 rightXZ = Vector3Normalize(Vector3{right.x, 0, right.z});
+
+    if (IsKeyDown(KEY_W)) ec->target = Vector3Add(ec->target, Vector3Scale(forwardXZ, speed));
+    if (IsKeyDown(KEY_S)) ec->target = Vector3Add(ec->target, Vector3Scale(forwardXZ, -speed));
+    if (IsKeyDown(KEY_D)) ec->target = Vector3Add(ec->target, Vector3Scale(rightXZ, speed));
+    if (IsKeyDown(KEY_A)) ec->target = Vector3Add(ec->target, Vector3Scale(rightXZ, -speed));
+    if (IsKeyDown(KEY_E)) ec->target.y += speed;
+    if (IsKeyDown(KEY_Q)) ec->target.y -= speed;
 
     editor_camera_sync(ec);
 }
