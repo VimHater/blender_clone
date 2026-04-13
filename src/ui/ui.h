@@ -1,9 +1,9 @@
 #ifndef UI_UI_H
 #define UI_UI_H
 
-#include "core/scene.h"
-#include "core/camera.h"
-#include "core/timeline.h"
+#include <core/scene.h>
+#include <core/camera.h>
+#include <core/timeline.h>
 
 struct EditorUI {
     RenderTexture2D viewportRT;

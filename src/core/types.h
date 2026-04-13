@@ -1,8 +1,8 @@
 #ifndef CORE_TYPES_H
 #define CORE_TYPES_H
 
-#include "raylib.h"
-#include "raymath.h"
+#include <raylib.h>
+#include <raymath.h>
 #include <stdint.h>
 
 // ---- Constants ----
@@ -11,6 +11,7 @@
 #define MAX_KEYFRAMES    512
 #define MAX_NAME_LEN     64
 #define MAX_CHILDREN     64
+#define MAX_SELECTED     256
 
 // ---- Enums ----
 
@@ -69,6 +70,7 @@ struct Keyframe {
 };
 
 struct SceneObject {
+    uint32_t id;            // unique identifier, never reused
     char name[MAX_NAME_LEN];
     ObjectType type;
     bool active;

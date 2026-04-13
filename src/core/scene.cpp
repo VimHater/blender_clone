@@ -1,5 +1,5 @@
 #include "scene.h"
-#include "rlgl.h"
+#include <rlgl.h>
 #include <cstring>
 #include <cstdio>
 
@@ -89,18 +89,55 @@ SceneObject object_default(const char *name, ObjectType type) {
 void scene_init(Scene *s) {
     memset(s, 0, sizeof(*s));
     s->objectCount = 0;
-    s->selectedIndex = -1;
+    s->nextId = 1;
+    s->selectedCount = 0;
 }
+
+// ---- Naming ----
+
+void scene_generate_name(const Scene *s, const char *baseName, char *outName, int outLen) {
+    // check if baseName itself is unique
+    bool taken = false;
+    for (int i = 0; i < s->objectCount; i++) {
+        if (strcmp(s->objects[i].name, baseName) == 0) { taken = true; break; }
+    }
+    if (!taken) {
+        snprintf(outName, outLen, "%s", baseName);
+        return;
+    }
+    // try baseName.001, .002, ...
+    for (int n = 1; n < 10000; n++) {
+        snprintf(outName, outLen, "%s.%03d", baseName, n);
+        taken = false;
+        for (int i = 0; i < s->objectCount; i++) {
+            if (strcmp(s->objects[i].name, outName) == 0) { taken = true; break; }
+        }
+        if (!taken) return;
+    }
+    // fallback
+    snprintf(outName, outLen, "%s.???", baseName);
+}
+
+// ---- Add / Remove ----
 
 int scene_add(Scene *s, const char *name, ObjectType type) {
     if (s->objectCount >= MAX_OBJECTS) return -1;
+
+    // generate unique name before adding to the array
+    char uniqueName[MAX_NAME_LEN];
+    scene_generate_name(s, name, uniqueName, MAX_NAME_LEN);
+
     int idx = s->objectCount++;
-    s->objects[idx] = object_default(name, type);
+    s->objects[idx] = object_default(uniqueName, type);
+    s->objects[idx].id = s->nextId++;
+
     return idx;
 }
 
 void scene_remove(Scene *s, int index) {
     if (index < 0 || index >= s->objectCount) return;
+
+    uint32_t removedId = s->objects[index].id;
 
     if (s->objects[index].modelLoaded) {
         UnloadModel(s->objects[index].model);
@@ -122,13 +159,76 @@ void scene_remove(Scene *s, int index) {
         }
     }
 
-    if (s->selectedIndex == index) s->selectedIndex = -1;
-    else if (s->selectedIndex > index) s->selectedIndex--;
+    // remove from selection
+    for (int i = 0; i < s->selectedCount; i++) {
+        if (s->selectedIds[i] == removedId) {
+            s->selectedIds[i] = s->selectedIds[--s->selectedCount];
+            break;
+        }
+    }
 }
 
-SceneObject *scene_selected(Scene *s) {
-    if (s->selectedIndex < 0 || s->selectedIndex >= s->objectCount) return nullptr;
-    return &s->objects[s->selectedIndex];
+// ---- Selection ----
+
+bool scene_is_selected(const Scene *s, uint32_t id) {
+    for (int i = 0; i < s->selectedCount; i++) {
+        if (s->selectedIds[i] == id) return true;
+    }
+    return false;
+}
+
+void scene_select(Scene *s, uint32_t id, bool toggle, bool add) {
+    if (toggle) {
+        // toggle: if already selected, deselect; otherwise add
+        for (int i = 0; i < s->selectedCount; i++) {
+            if (s->selectedIds[i] == id) {
+                s->selectedIds[i] = s->selectedIds[--s->selectedCount];
+                return;
+            }
+        }
+        if (s->selectedCount < MAX_SELECTED) {
+            s->selectedIds[s->selectedCount++] = id;
+        }
+    } else if (add) {
+        // add to selection without clearing
+        if (!scene_is_selected(s, id) && s->selectedCount < MAX_SELECTED) {
+            s->selectedIds[s->selectedCount++] = id;
+        }
+    } else {
+        // exclusive select
+        s->selectedCount = 1;
+        s->selectedIds[0] = id;
+    }
+}
+
+void scene_select_range(Scene *s, int fromIndex, int toIndex) {
+    if (fromIndex > toIndex) { int tmp = fromIndex; fromIndex = toIndex; toIndex = tmp; }
+    for (int i = fromIndex; i <= toIndex && i < s->objectCount; i++) {
+        if (!scene_is_selected(s, s->objects[i].id) && s->selectedCount < MAX_SELECTED) {
+            s->selectedIds[s->selectedCount++] = s->objects[i].id;
+        }
+    }
+}
+
+void scene_deselect_all(Scene *s) {
+    s->selectedCount = 0;
+}
+
+SceneObject *scene_first_selected(Scene *s) {
+    if (s->selectedCount == 0) return nullptr;
+    return scene_get_by_id(s, s->selectedIds[0]);
+}
+
+int scene_find_by_id(const Scene *s, uint32_t id) {
+    for (int i = 0; i < s->objectCount; i++) {
+        if (s->objects[i].id == id) return i;
+    }
+    return -1;
+}
+
+SceneObject *scene_get_by_id(Scene *s, uint32_t id) {
+    int idx = scene_find_by_id(s, id);
+    return (idx >= 0) ? &s->objects[idx] : nullptr;
 }
 
 static void draw_object(const SceneObject *obj) {
@@ -256,8 +356,11 @@ static void draw_selection_outline(const SceneObject *obj) {
 }
 
 void scene_draw_selection(const Scene *s) {
-    if (s->selectedIndex < 0 || s->selectedIndex >= s->objectCount) return;
-    draw_selection_outline(&s->objects[s->selectedIndex]);
+    for (int i = 0; i < s->objectCount; i++) {
+        if (scene_is_selected(s, s->objects[i].id)) {
+            draw_selection_outline(&s->objects[i]);
+        }
+    }
 }
 
 void scene_draw_preview(ObjectType type, Vector3 pos) {

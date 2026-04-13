@@ -1,12 +1,12 @@
 #ifndef EDITOR_H
 #define EDITOR_H
 
-#include "core/scene.h"
-#include "core/camera.h"
-#include "core/timeline.h"
-#include "core/shadow.h"
-#include "core/raycast.h"
-#include "ui/ui.h"
+#include <core/scene.h>
+#include <core/camera.h>
+#include <core/timeline.h>
+#include <core/shadow.h>
+#include <core/raycast.h>
+#include <ui/ui.h>
 
 struct Editor {
     Scene scene;

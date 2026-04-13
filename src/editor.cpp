@@ -128,7 +128,8 @@ void editor_update(Editor *ed) {
                 int idx = scene_add(&ed->scene, names[ed->ui.placementType], ed->ui.placementType);
                 if (idx >= 0) {
                     ed->scene.objects[idx].transform.position = ed->ui.placementPos;
-                    ed->scene.selectedIndex = idx;
+                    scene_deselect_all(&ed->scene);
+                    scene_select(&ed->scene, ed->scene.objects[idx].id, false, false);
                 }
                 ed->ui.placementMode = false;
                 ed->ui.placementValid = false;
@@ -146,9 +147,16 @@ void editor_update(Editor *ed) {
 
     // TODO: add viewport click-to-select (raycast picking in render texture)
 
-    // delete key
-    if (ed->scene.selectedIndex >= 0 && IsKeyPressed(KEY_DELETE) && !ImGui::GetIO().WantCaptureKeyboard) {
-        scene_remove(&ed->scene, ed->scene.selectedIndex);
+    // delete key — remove all selected objects
+    if (ed->scene.selectedCount > 0 && IsKeyPressed(KEY_DELETE) && !ImGui::GetIO().WantCaptureKeyboard) {
+        // collect IDs first since indices shift during removal
+        uint32_t ids[MAX_SELECTED];
+        int count = ed->scene.selectedCount;
+        for (int i = 0; i < count; i++) ids[i] = ed->scene.selectedIds[i];
+        for (int i = 0; i < count; i++) {
+            int idx = scene_find_by_id(&ed->scene, ids[i]);
+            if (idx >= 0) scene_remove(&ed->scene, idx);
+        }
     }
 }
 

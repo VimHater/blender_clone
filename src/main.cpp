@@ -1,4 +1,4 @@
-#include "editor.h"
+#include <editor.h>
 #define DEFAULT_SCREEN_W 1920
 #define DEFAULT_SCREEN_H 1080
 

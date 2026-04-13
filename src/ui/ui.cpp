@@ -1,7 +1,7 @@
 #include "ui.h"
-#include "rlImGui.h"
-#include "imgui.h"
-#include "imgui_internal.h"
+#include <rlImGui.h>
+#include <imgui.h>
+#include <imgui_internal.h>
 #include <cstdio>
 #include <cstdint>
 
@@ -165,10 +165,16 @@ void ui_viewport(EditorUI *ui) {
 
 // ---- Hierarchy ----
 
-static void hierarchy_draw_node(Scene *s, int index) {
+// track rename state
+static uint32_t s_renameId = 0;
+static char s_renameBuf[MAX_NAME_LEN] = {};
+// track last clicked index for shift-select range
+static int s_lastClickedIndex = -1;
+
+static void hierarchy_draw_node(Scene *s, int index, EditorUI *ui) {
     SceneObject *obj = &s->objects[index];
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
-    if (s->selectedIndex == index) flags |= ImGuiTreeNodeFlags_Selected;
+    if (scene_is_selected(s, obj->id)) flags |= ImGuiTreeNodeFlags_Selected;
 
     bool hasChildren = false;
     for (int i = 0; i < s->objectCount; i++) {
@@ -176,18 +182,64 @@ static void hierarchy_draw_node(Scene *s, int index) {
     }
     if (!hasChildren) flags |= ImGuiTreeNodeFlags_Leaf;
 
-    bool open = ImGui::TreeNodeEx((void *)(intptr_t)index, flags, "%s", obj->name);
-    if (ImGui::IsItemClicked()) {
-        s->selectedIndex = index;
+    // if renaming this object, show input instead of label
+    bool renaming = (s_renameId == obj->id && s_renameId != 0);
+    bool open;
+    if (renaming) {
+        open = ImGui::TreeNodeEx((void *)(intptr_t)obj->id, flags, "");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::InputText("##rename", s_renameBuf, MAX_NAME_LEN,
+                             ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
+            if (s_renameBuf[0] != '\0') {
+                snprintf(obj->name, MAX_NAME_LEN, "%s", s_renameBuf);
+            }
+            s_renameId = 0;
+        }
+        // cancel on escape or click elsewhere
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape) ||
+            (!ImGui::IsItemActive() && ImGui::IsMouseClicked(0))) {
+            s_renameId = 0;
+        }
+    } else {
+        open = ImGui::TreeNodeEx((void *)(intptr_t)obj->id, flags, "%s", obj->name);
+
+        // double-click to rename
+        if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
+            s_renameId = obj->id;
+            snprintf(s_renameBuf, MAX_NAME_LEN, "%s", obj->name);
+        }
+
+        // single click for selection
+        if (ImGui::IsItemClicked(0) && !ImGui::IsMouseDoubleClicked(0)) {
+            bool ctrl = ImGui::GetIO().KeyCtrl;
+            bool shift = ImGui::GetIO().KeyShift;
+            if (shift && s_lastClickedIndex >= 0) {
+                scene_select_range(s, s_lastClickedIndex, index);
+            } else {
+                scene_select(s, obj->id, ctrl, ctrl);
+            }
+            s_lastClickedIndex = index;
+        }
     }
 
     if (open) {
         for (int i = 0; i < s->objectCount; i++) {
             if (s->objects[i].parentIndex == index) {
-                hierarchy_draw_node(s, i);
+                hierarchy_draw_node(s, i, ui);
             }
         }
         ImGui::TreePop();
+    }
+}
+
+static void hierarchy_context_add(Scene *s, const char *label, const char *name, ObjectType type) {
+    if (ImGui::MenuItem(label)) {
+        int idx = scene_add(s, name, type);
+        if (idx >= 0) {
+            scene_deselect_all(s);
+            scene_select(s, s->objects[idx].id, false, false);
+        }
     }
 }
 
@@ -195,27 +247,38 @@ void ui_hierarchy(Scene *s, EditorUI *ui) {
     if (!ui->showHierarchy) return;
     ImGui::Begin("Scene Hierarchy", &ui->showHierarchy);
 
+    // click empty space to deselect
+    if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(0) && !ImGui::IsAnyItemHovered()) {
+        scene_deselect_all(s);
+    }
+
     for (int i = 0; i < s->objectCount; i++) {
         if (s->objects[i].parentIndex == -1) {
-            hierarchy_draw_node(s, i);
+            hierarchy_draw_node(s, i, ui);
         }
     }
 
     if (ImGui::BeginPopupContextWindow("HierarchyContext")) {
-        if (ImGui::MenuItem("Add Cube"))       { s->selectedIndex = scene_add(s, "Cube", OBJ_CUBE); }
-        if (ImGui::MenuItem("Add Sphere"))     { s->selectedIndex = scene_add(s, "Sphere", OBJ_SPHERE); }
-        if (ImGui::MenuItem("Add HemiSphere")) { s->selectedIndex = scene_add(s, "HemiSphere", OBJ_HEMISPHERE); }
-        if (ImGui::MenuItem("Add Plane"))      { s->selectedIndex = scene_add(s, "Plane", OBJ_PLANE); }
-        if (ImGui::MenuItem("Add Cylinder"))   { s->selectedIndex = scene_add(s, "Cylinder", OBJ_CYLINDER); }
-        if (ImGui::MenuItem("Add Cone"))       { s->selectedIndex = scene_add(s, "Cone", OBJ_CONE); }
-        if (ImGui::MenuItem("Add Torus"))      { s->selectedIndex = scene_add(s, "Torus", OBJ_TORUS); }
-        if (ImGui::MenuItem("Add Knot"))       { s->selectedIndex = scene_add(s, "Knot", OBJ_KNOT); }
-        if (ImGui::MenuItem("Add Capsule"))    { s->selectedIndex = scene_add(s, "Capsule", OBJ_CAPSULE); }
-        if (ImGui::MenuItem("Add Polygon"))    { s->selectedIndex = scene_add(s, "Polygon", OBJ_POLY); }
+        hierarchy_context_add(s, "Add Cube",       "Cube",       OBJ_CUBE);
+        hierarchy_context_add(s, "Add Sphere",     "Sphere",     OBJ_SPHERE);
+        hierarchy_context_add(s, "Add HemiSphere", "HemiSphere", OBJ_HEMISPHERE);
+        hierarchy_context_add(s, "Add Plane",      "Plane",      OBJ_PLANE);
+        hierarchy_context_add(s, "Add Cylinder",   "Cylinder",   OBJ_CYLINDER);
+        hierarchy_context_add(s, "Add Cone",       "Cone",       OBJ_CONE);
+        hierarchy_context_add(s, "Add Torus",      "Torus",      OBJ_TORUS);
+        hierarchy_context_add(s, "Add Knot",       "Knot",       OBJ_KNOT);
+        hierarchy_context_add(s, "Add Capsule",    "Capsule",    OBJ_CAPSULE);
+        hierarchy_context_add(s, "Add Polygon",    "Polygon",    OBJ_POLY);
         ImGui::Separator();
-        if (s->selectedIndex >= 0) {
+        if (s->selectedCount > 0) {
             if (ImGui::MenuItem("Delete Selected")) {
-                scene_remove(s, s->selectedIndex);
+                uint32_t ids[MAX_SELECTED];
+                int count = s->selectedCount;
+                for (int i = 0; i < count; i++) ids[i] = s->selectedIds[i];
+                for (int i = 0; i < count; i++) {
+                    int idx = scene_find_by_id(s, ids[i]);
+                    if (idx >= 0) scene_remove(s, idx);
+                }
             }
         }
         ImGui::EndPopup();
@@ -230,11 +293,15 @@ void ui_properties(Scene *s, EditorUI *ui) {
     if (!ui->showProperties) return;
     ImGui::Begin("Properties", &ui->showProperties);
 
-    SceneObject *obj = scene_selected(s);
+    SceneObject *obj = scene_first_selected(s);
     if (!obj) {
         ImGui::Text("No object selected");
         ImGui::End();
         return;
+    }
+    if (s->selectedCount > 1) {
+        ImGui::Text("%d objects selected", s->selectedCount);
+        ImGui::Separator();
     }
 
     ImGui::InputText("Name", obj->name, MAX_NAME_LEN);
@@ -422,7 +489,7 @@ void ui_timeline(Scene *s, Timeline *tl, EditorUI *ui) {
     ImGui::SameLine();
     ImGui::Text("Frame: %d", tl->currentFrame);
 
-    SceneObject *obj = scene_selected(s);
+    SceneObject *obj = scene_first_selected(s);
     if (obj) {
         ImGui::Separator();
         ImGui::Text("Keyframes: %s", obj->name);
