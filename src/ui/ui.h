@@ -25,6 +25,7 @@ struct EditorUI {
     float gridSpacing;
 
     TransformMode transformMode;
+    DrawMode drawMode;
     bool showTimeline;
     bool showHierarchy;
     bool showProperties;

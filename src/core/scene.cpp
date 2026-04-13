@@ -90,7 +90,7 @@ SceneObject object_default(const char *name, ObjectType type) {
     obj.keyframeCount = 0;
 
     if (type == OBJ_KNOT) {
-        obj.torusRadius = 1850.0f;
+        obj.torusRadius = 1.8f;
         obj.torusSides = 64;
     }
 
@@ -249,7 +249,31 @@ SceneObject *scene_get_by_id(Scene *s, uint32_t id) {
     return (idx >= 0) ? &s->objects[idx] : nullptr;
 }
 
-static void draw_object(const SceneObject *obj) {
+// helper: generate a temp model for mesh-based types, draw it, unload
+static void draw_mesh_object(const SceneObject *obj, DrawMode mode, Color c) {
+    Mesh mesh = {0};
+    bool hasMesh = false;
+    switch (obj->type) {
+        case OBJ_TORUS:
+            mesh = GenMeshTorus(obj->torusRadius, obj->torusSize, obj->torusRadSeg, obj->torusSides);
+            hasMesh = true; break;
+        case OBJ_KNOT:
+            mesh = GenMeshKnot(obj->torusRadius, obj->torusSize, obj->torusRadSeg, obj->torusSides);
+            hasMesh = true; break;
+        case OBJ_POLY:
+            mesh = GenMeshPoly(obj->polySides, obj->polyRadius);
+            hasMesh = true; break;
+        default: break;
+    }
+    if (!hasMesh) return;
+    Model mdl = LoadModelFromMesh(mesh);
+    if (mode == DRAW_SOLID)          DrawModel(mdl, Vector3{0,0,0}, 1.0f, c);
+    else if (mode == DRAW_WIREFRAME) DrawModelWires(mdl, Vector3{0,0,0}, 1.0f, c);
+    else if (mode == DRAW_POINT)   { DrawModelPoints(mdl, Vector3{0,0,0}, 1.0f, c); }
+    UnloadModel(mdl);
+}
+
+static void draw_object(const SceneObject *obj, DrawMode mode) {
     if (!obj->active || !obj->visible) return;
 
     Matrix mat = transform_to_matrix(obj->transform);
@@ -260,60 +284,78 @@ static void draw_object(const SceneObject *obj) {
 
     switch (obj->type) {
         case OBJ_CUBE:
-            DrawCube(Vector3{0,0,0}, obj->cubeSize[0], obj->cubeSize[1], obj->cubeSize[2], c);
-            DrawCubeWires(Vector3{0,0,0}, obj->cubeSize[0], obj->cubeSize[1], obj->cubeSize[2], BLACK);
+            if (mode == DRAW_SOLID) {
+                DrawCube(Vector3{0,0,0}, obj->cubeSize[0], obj->cubeSize[1], obj->cubeSize[2], c);
+                DrawCubeWires(Vector3{0,0,0}, obj->cubeSize[0], obj->cubeSize[1], obj->cubeSize[2], BLACK);
+            } else if (mode == DRAW_WIREFRAME) {
+                DrawCubeWires(Vector3{0,0,0}, obj->cubeSize[0], obj->cubeSize[1], obj->cubeSize[2], c);
+            } else {
+                DrawPoint3D(Vector3{0,0,0}, c);
+            }
             break;
         case OBJ_SPHERE:
-            DrawSphereEx(Vector3{0,0,0}, obj->sphereRadius, obj->sphereRings, obj->sphereSlices, c);
+            if (mode == DRAW_SOLID)
+                DrawSphereEx(Vector3{0,0,0}, obj->sphereRadius, obj->sphereRings, obj->sphereSlices, c);
+            else if (mode == DRAW_WIREFRAME)
+                DrawSphereWires(Vector3{0,0,0}, obj->sphereRadius, obj->sphereRings, obj->sphereSlices, c);
+            else
+                DrawPoint3D(Vector3{0,0,0}, c);
             break;
         case OBJ_PLANE:
-            DrawPlane(Vector3{0,0,0}, Vector2{obj->cubeSize[0], obj->cubeSize[2]}, c);
+            if (mode == DRAW_SOLID)
+                DrawPlane(Vector3{0,0,0}, Vector2{obj->cubeSize[0], obj->cubeSize[2]}, c);
+            else if (mode == DRAW_WIREFRAME)
+                DrawCubeWires(Vector3{0,0,0}, obj->cubeSize[0], 0.01f, obj->cubeSize[2], c);
+            else
+                DrawPoint3D(Vector3{0,0,0}, c);
             break;
         case OBJ_CYLINDER:
-            DrawCylinder(Vector3{0,0,0}, obj->cylinderRadiusTop, obj->cylinderRadiusBottom,
-                         obj->cylinderHeight, 16, c);
+            if (mode == DRAW_SOLID)
+                DrawCylinder(Vector3{0,0,0}, obj->cylinderRadiusTop, obj->cylinderRadiusBottom,
+                             obj->cylinderHeight, 16, c);
+            else if (mode == DRAW_WIREFRAME)
+                DrawCylinderWires(Vector3{0,0,0}, obj->cylinderRadiusTop, obj->cylinderRadiusBottom,
+                                  obj->cylinderHeight, 16, c);
+            else
+                DrawPoint3D(Vector3{0,0,0}, c);
             break;
         case OBJ_CONE:
-            DrawCylinder(Vector3{0,0,0}, 0.0f, obj->coneRadius, obj->coneHeight, obj->coneSlices, c);
+            if (mode == DRAW_SOLID)
+                DrawCylinder(Vector3{0,0,0}, 0.0f, obj->coneRadius, obj->coneHeight, obj->coneSlices, c);
+            else if (mode == DRAW_WIREFRAME)
+                DrawCylinderWires(Vector3{0,0,0}, 0.0f, obj->coneRadius, obj->coneHeight, obj->coneSlices, c);
+            else
+                DrawPoint3D(Vector3{0,0,0}, c);
             break;
-        case OBJ_TORUS: {
-            Mesh mesh = GenMeshTorus(obj->torusRadius, obj->torusSize, obj->torusRadSeg, obj->torusSides);
-            Model mdl = LoadModelFromMesh(mesh);
-            DrawModel(mdl, Vector3{0,0,0}, 1.0f, c);
-            UnloadModel(mdl);
+        case OBJ_TORUS:
+        case OBJ_KNOT:
+        case OBJ_POLY:
+            draw_mesh_object(obj, mode, c);
             break;
-        }
-        case OBJ_KNOT: {
-            Mesh mesh = GenMeshKnot(obj->torusRadius, obj->torusSize, obj->torusRadSeg, obj->torusSides);
-            Model mdl = LoadModelFromMesh(mesh);
-            DrawModel(mdl, Vector3{0,0,0}, 1.0f, c);
-            UnloadModel(mdl);
-            break;
-        }
         case OBJ_CAPSULE:
-            DrawCapsule(Vector3{0, -obj->capsuleHeight * 0.5f, 0},
-                        Vector3{0,  obj->capsuleHeight * 0.5f, 0},
-                        obj->capsuleRadius, 16, 8, c);
+            if (mode == DRAW_SOLID)
+                DrawCapsule(Vector3{0, -obj->capsuleHeight * 0.5f, 0},
+                            Vector3{0,  obj->capsuleHeight * 0.5f, 0},
+                            obj->capsuleRadius, 16, 8, c);
+            else if (mode == DRAW_WIREFRAME)
+                DrawCapsuleWires(Vector3{0, -obj->capsuleHeight * 0.5f, 0},
+                                 Vector3{0,  obj->capsuleHeight * 0.5f, 0},
+                                 obj->capsuleRadius, 16, 8, c);
+            else
+                DrawPoint3D(Vector3{0,0,0}, c);
             break;
-        case OBJ_POLY: {
-            Mesh mesh = GenMeshPoly(obj->polySides, obj->polyRadius);
-            Model mdl = LoadModelFromMesh(mesh);
-            DrawModel(mdl, Vector3{0,0,0}, 1.0f, c);
-            UnloadModel(mdl);
-            break;
-        }
         case OBJ_TEAPOT:
         case OBJ_MODEL_FILE:
             if (obj->modelLoaded) {
-                DrawModel(obj->model, Vector3{0,0,0}, 1.0f, c);
+                if (mode == DRAW_SOLID)          DrawModel(obj->model, Vector3{0,0,0}, 1.0f, c);
+                else if (mode == DRAW_WIREFRAME) DrawModelWires(obj->model, Vector3{0,0,0}, 1.0f, c);
+                else                             DrawModelPoints(obj->model, Vector3{0,0,0}, 1.0f, c);
             }
             break;
         case OBJ_CAMERA: {
-            // draw camera gizmo: a small box body + frustum lines
             DrawCube(Vector3{0,0,0}, 0.3f, 0.2f, 0.3f, c);
-            // lens direction is -Z in local space
             float s = 0.4f;
-            Vector3 ftl = {-s,  s, -s*2};  // far top left
+            Vector3 ftl = {-s,  s, -s*2};
             Vector3 ftr = { s,  s, -s*2};
             Vector3 fbl = {-s, -s, -s*2};
             Vector3 fbr = { s, -s, -s*2};
@@ -331,9 +373,9 @@ static void draw_object(const SceneObject *obj) {
     rlPopMatrix();
 }
 
-void scene_draw(const Scene *s) {
+void scene_draw(const Scene *s, DrawMode mode) {
     for (int i = 0; i < s->objectCount; i++) {
-        draw_object(&s->objects[i]);
+        draw_object(&s->objects[i], mode);
     }
 }
 

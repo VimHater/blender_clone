@@ -18,6 +18,7 @@ void ui_init(EditorUI *ui, int vpW, int vpH) {
     ui->gridSize = 10;
     ui->gridSpacing = 1.0f;
     ui->transformMode = TMODE_TRANSLATE;
+    ui->drawMode = DRAW_SOLID;
     ui->showTimeline = true;
     ui->showHierarchy = true;
     ui->showProperties = true;
@@ -118,6 +119,12 @@ void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui) {
             ImGui::MenuItem("Camera", nullptr, &ui->showCamera);
             ImGui::MenuItem("Timeline", nullptr, &ui->showTimeline);
             ImGui::MenuItem("Grid", nullptr, &ui->showGrid);
+            ImGui::Separator();
+            const char *drawModeNames[] = { "Solid", "Wireframe", "Point" };
+            int dm = (int)ui->drawMode;
+            if (ImGui::Combo("Draw Mode", &dm, drawModeNames, 3)) {
+                ui->drawMode = (DrawMode)dm;
+            }
             ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();

@@ -215,7 +215,7 @@ void editor_draw(Editor *ed) {
             if (ed->ui.showGrid) {
                 DrawGrid(ed->ui.gridSize, ed->ui.gridSpacing);
             }
-            scene_draw(&ed->scene);
+            scene_draw(&ed->scene, ed->ui.drawMode);
             scene_draw_selection(&ed->scene);
             if (ed->ui.placementMode && ed->ui.placementValid) {
                 scene_draw_preview(ed->ui.placementType, ed->ui.placementPos);

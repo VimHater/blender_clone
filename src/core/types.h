@@ -37,6 +37,12 @@ enum TransformMode {
     TMODE_SCALE,
 };
 
+enum DrawMode {
+    DRAW_SOLID,
+    DRAW_WIREFRAME,
+    DRAW_POINT,
+};
+
 enum PlaybackState {
     PLAYBACK_STOPPED,
     PLAYBACK_PLAYING,
