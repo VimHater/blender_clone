@@ -4,12 +4,12 @@
 #include <imgui_internal.h>
 #include <cstdio>
 #include <cstdint>
-#include "builtin_textures/checkerboard.h"
-#include "builtin_textures/brick.h"
-#include "builtin_textures/sand.h"
-#include "builtin_textures/brushed_metal.h"
-#include "builtin_textures/wood.h"
-#include "builtin_textures/grass.h"
+#include "builtin_textures/checkerboard.texture_array"
+#include "builtin_textures/brick.texture_array"
+#include "builtin_textures/sand.texture_array"
+#include "builtin_textures/brushed_metal.texture_array"
+#include "builtin_textures/wood.texture_array"
+#include "builtin_textures/grass.texture_array"
 
 // ---- Init / Shutdown ----
 
