@@ -24,6 +24,7 @@ void ui_init(EditorUI *ui, int vpW, int vpH) {
     ui->showAddObject = true;
     ui->showCamera = true;
     ui->dockspaceInitialized = false;
+    ui->activeCameraId = 0;
     ui->placementMode = false;
     ui->placementValid = false;
     ui->vpImageX = ui->vpImageY = 0;
@@ -373,6 +374,14 @@ void ui_properties(Scene *s, EditorUI *ui) {
                 ImGui::SliderInt("Sides",  &obj->polySides, 3, 64);
                 ImGui::DragFloat("Radius", &obj->polyRadius, 0.05f, 0.1f, 50.0f);
                 break;
+            case OBJ_CAMERA: {
+                ImGui::DragFloat("FOV", &obj->camFov, 0.5f, 1.0f, 179.0f, "%.1f");
+                ImGui::DragFloat("Near", &obj->camNear, 0.01f, 0.001f, 100.0f, "%.3f");
+                ImGui::DragFloat("Far", &obj->camFar, 1.0f, 1.0f, 100000.0f, "%.0f");
+                bool ortho = obj->camOrtho;
+                if (ImGui::Checkbox("Orthographic", &ortho)) obj->camOrtho = ortho;
+                break;
+            }
             case OBJ_MODEL_FILE:
                 ImGui::Text("Path: %s", obj->modelPath);
                 if (obj->modelLoaded) {
@@ -421,6 +430,7 @@ void ui_add_object(Scene *s, EditorUI *ui) {
     add_object_button(ui, "Capsule",    OBJ_CAPSULE);
     add_object_button(ui, "Polygon",    OBJ_POLY);
     add_object_button(ui, "Teapot",     OBJ_TEAPOT);
+    add_object_button(ui, "Camera",     OBJ_CAMERA);
 
     ImGui::Separator();
     ImGui::Text("Load Model File");
@@ -443,51 +453,110 @@ void ui_add_object(Scene *s, EditorUI *ui) {
 
 // ---- Camera ----
 
-void ui_camera(EditorCamera *ec, EditorUI *ui) {
+void ui_camera(Scene *s, EditorCamera *ec, EditorUI *ui) {
     if (!ui->showCamera) return;
     ImGui::Begin("Camera", &ui->showCamera);
 
-    ImGui::SeparatorText("Projection");
-    const char *projItems[] = { "Perspective", "Orthographic" };
-    int projIdx = ec->ortho ? 1 : 0;
-    if (ImGui::Combo("Projection", &projIdx, projItems, 2)) {
-        ec->ortho = (projIdx == 1);
-    }
-    ImGui::DragFloat("FOV", &ec->fov, 0.5f, 1.0f, 179.0f, "%.1f");
-    ImGui::DragFloat("Near", &ec->nearPlane, 0.01f, 0.001f, 100.0f, "%.3f");
-    ImGui::DragFloat("Far", &ec->farPlane, 1.0f, 1.0f, 100000.0f, "%.0f");
+    // ---- Active camera selector ----
+    ImGui::SeparatorText("Active Camera");
+    {
+        // build list: "Editor Camera" + all scene camera objects
+        const char *editorLabel = "Editor Camera";
+        int currentIdx = 0; // 0 = editor camera
 
-    ImGui::SeparatorText("Orbit");
-    ImGui::DragFloat("Distance", &ec->distance, 0.1f, 1.0f, 200.0f, "%.1f");
-    float yawDeg = ec->yaw * RAD2DEG;
-    float pitchDeg = ec->pitch * RAD2DEG;
-    if (ImGui::DragFloat("Yaw", &yawDeg, 0.5f)) ec->yaw = yawDeg * DEG2RAD;
-    if (ImGui::DragFloat("Pitch", &pitchDeg, 0.5f, -85.0f, 85.0f)) ec->pitch = pitchDeg * DEG2RAD;
+        // count scene cameras
+        int camCount = 0;
+        for (int i = 0; i < s->objectCount; i++) {
+            if (s->objects[i].type == OBJ_CAMERA) camCount++;
+        }
 
-    ImGui::SeparatorText("Target");
-    ImGui::DragFloat3("Position", &ec->target.x, 0.1f);
+        // items: editor + scene cameras
+        const char *items[MAX_OBJECTS + 1];
+        uint32_t itemIds[MAX_OBJECTS + 1];
+        items[0] = editorLabel;
+        itemIds[0] = 0;
+        int n = 1;
+        for (int i = 0; i < s->objectCount; i++) {
+            if (s->objects[i].type == OBJ_CAMERA) {
+                items[n] = s->objects[i].name;
+                itemIds[n] = s->objects[i].id;
+                if (s->objects[i].id == ui->activeCameraId) currentIdx = n;
+                n++;
+            }
+        }
 
-    ImGui::SeparatorText("Speed");
-    ImGui::DragFloat("Move (WASD)", &ec->moveSpeed, 0.1f, 0.1f, 100.0f, "%.1f");
-    ImGui::DragFloat("Zoom", &ec->zoomSpeed, 0.05f, 0.1f, 10.0f, "%.2f");
-    ImGui::DragFloat("Pan", &ec->panSpeed, 0.001f, 0.001f, 0.1f, "%.3f");
-    ImGui::DragFloat("Orbit Speed", &ec->orbitSpeed, 0.0005f, 0.001f, 0.05f, "%.4f");
-
-    ImGui::SeparatorText("Info");
-    ImGui::Text("Cam Pos: %.1f, %.1f, %.1f", ec->cam.position.x, ec->cam.position.y, ec->cam.position.z);
-
-    if (ImGui::Button("Reset Camera")) {
-        ec->target = Vector3{0, 0, 0};
-        ec->distance = 15.0f;
-        ec->yaw = 0.8f;
-        ec->pitch = 0.6f;
-        ec->fov = 45.0f;
-        ec->nearPlane = 0.1f;
-        ec->farPlane = 1000.0f;
-        ec->ortho = false;
+        if (ImGui::Combo("##ActiveCam", &currentIdx, items, n)) {
+            ui->activeCameraId = itemIds[currentIdx];
+        }
     }
 
-    editor_camera_sync(ec);
+    // validate: if active camera was deleted, fall back to editor
+    if (ui->activeCameraId != 0 && scene_find_by_id(s, ui->activeCameraId) < 0) {
+        ui->activeCameraId = 0;
+    }
+
+    ImGui::Separator();
+
+    if (ui->activeCameraId == 0) {
+        // ---- Editor camera controls ----
+        ImGui::SeparatorText("Projection");
+        const char *projItems[] = { "Perspective", "Orthographic" };
+        int projIdx = ec->ortho ? 1 : 0;
+        if (ImGui::Combo("Projection", &projIdx, projItems, 2)) {
+            ec->ortho = (projIdx == 1);
+        }
+        ImGui::DragFloat("FOV", &ec->fov, 0.5f, 1.0f, 179.0f, "%.1f");
+        ImGui::DragFloat("Near", &ec->nearPlane, 0.01f, 0.001f, 100.0f, "%.3f");
+        ImGui::DragFloat("Far", &ec->farPlane, 1.0f, 1.0f, 100000.0f, "%.0f");
+
+        ImGui::SeparatorText("Orbit");
+        ImGui::DragFloat("Distance", &ec->distance, 0.1f, 1.0f, 200.0f, "%.1f");
+        float yawDeg = ec->yaw * RAD2DEG;
+        float pitchDeg = ec->pitch * RAD2DEG;
+        if (ImGui::DragFloat("Yaw", &yawDeg, 0.5f)) ec->yaw = yawDeg * DEG2RAD;
+        if (ImGui::DragFloat("Pitch", &pitchDeg, 0.5f, -85.0f, 85.0f)) ec->pitch = pitchDeg * DEG2RAD;
+
+        ImGui::SeparatorText("Target");
+        ImGui::DragFloat3("Position", &ec->target.x, 0.1f);
+
+        ImGui::SeparatorText("Speed");
+        ImGui::DragFloat("Move (WASD)", &ec->moveSpeed, 0.1f, 0.1f, 100.0f, "%.1f");
+        ImGui::DragFloat("Zoom", &ec->zoomSpeed, 0.05f, 0.1f, 10.0f, "%.2f");
+        ImGui::DragFloat("Pan", &ec->panSpeed, 0.001f, 0.001f, 0.1f, "%.3f");
+        ImGui::DragFloat("Orbit Speed", &ec->orbitSpeed, 0.0005f, 0.001f, 0.05f, "%.4f");
+
+        ImGui::SeparatorText("Info");
+        ImGui::Text("Cam Pos: %.1f, %.1f, %.1f", ec->cam.position.x, ec->cam.position.y, ec->cam.position.z);
+
+        if (ImGui::Button("Reset Camera")) {
+            ec->target = Vector3{0, 0, 0};
+            ec->distance = 15.0f;
+            ec->yaw = 0.8f;
+            ec->pitch = 0.6f;
+            ec->fov = 45.0f;
+            ec->nearPlane = 0.1f;
+            ec->farPlane = 1000.0f;
+            ec->ortho = false;
+        }
+
+        editor_camera_sync(ec);
+    } else {
+        // ---- Scene camera controls ----
+        SceneObject *camObj = scene_get_by_id(s, ui->activeCameraId);
+        if (camObj) {
+            ImGui::Text("Viewing through: %s", camObj->name);
+            ImGui::SeparatorText("Camera Settings");
+            ImGui::DragFloat("FOV", &camObj->camFov, 0.5f, 1.0f, 179.0f, "%.1f");
+            ImGui::DragFloat("Near", &camObj->camNear, 0.01f, 0.001f, 100.0f, "%.3f");
+            ImGui::DragFloat("Far", &camObj->camFar, 1.0f, 1.0f, 100000.0f, "%.0f");
+            bool ortho = camObj->camOrtho;
+            if (ImGui::Checkbox("Orthographic", &ortho)) camObj->camOrtho = ortho;
+
+            ImGui::SeparatorText("Transform");
+            ImGui::DragFloat3("Position", &camObj->transform.position.x, 0.1f);
+            ImGui::DragFloat3("Rotation", &camObj->transform.rotation.x, 1.0f);
+        }
+    }
 
     ImGui::End();
 }

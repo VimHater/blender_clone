@@ -81,6 +81,10 @@ SceneObject object_default(const char *name, ObjectType type) {
     obj.coneRadius = 0.5f;
     obj.coneHeight = 2.0f;
     obj.coneSlices = 16;
+    obj.camFov = 45.0f;
+    obj.camNear = 0.1f;
+    obj.camFar = 1000.0f;
+    obj.camOrtho = false;
     obj.modelLoaded = false;
     obj.keyframeCount = 0;
 
@@ -301,6 +305,22 @@ static void draw_object(const SceneObject *obj) {
                 DrawModel(obj->model, Vector3{0,0,0}, 1.0f, c);
             }
             break;
+        case OBJ_CAMERA: {
+            // draw camera gizmo: a small box body + frustum lines
+            DrawCube(Vector3{0,0,0}, 0.3f, 0.2f, 0.3f, c);
+            // lens direction is -Z in local space
+            float s = 0.4f;
+            Vector3 ftl = {-s,  s, -s*2};  // far top left
+            Vector3 ftr = { s,  s, -s*2};
+            Vector3 fbl = {-s, -s, -s*2};
+            Vector3 fbr = { s, -s, -s*2};
+            Vector3 o = {0, 0, 0};
+            DrawLine3D(o, ftl, c); DrawLine3D(o, ftr, c);
+            DrawLine3D(o, fbl, c); DrawLine3D(o, fbr, c);
+            DrawLine3D(ftl, ftr, c); DrawLine3D(ftr, fbr, c);
+            DrawLine3D(fbr, fbl, c); DrawLine3D(fbl, ftl, c);
+            break;
+        }
         default:
             break;
     }
@@ -358,6 +378,9 @@ static void draw_selection_outline(const SceneObject *obj) {
                 BoundingBox bb = GetModelBoundingBox(obj->model);
                 DrawBoundingBox(bb, sel);
             }
+            break;
+        case OBJ_CAMERA:
+            DrawCubeWires(Vector3{0,0,0}, 0.3f, 0.2f, 0.3f, sel);
             break;
         default:
             break;
@@ -430,6 +453,9 @@ void scene_draw_preview(ObjectType type, Vector3 pos) {
             }
             break;
         }
+        case OBJ_CAMERA:
+            DrawCubeWires(Vector3{0,0,0}, 0.3f, 0.2f, 0.3f, wire);
+            break;
         default:
             break;
     }

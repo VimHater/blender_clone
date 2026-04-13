@@ -33,6 +33,9 @@ struct EditorUI {
 
     bool dockspaceInitialized;
 
+    // active camera: 0 = editor camera, otherwise ID of a scene camera object
+    uint32_t activeCameraId;
+
     // placement mode
     bool placementMode;
     ObjectType placementType;
@@ -50,7 +53,7 @@ void ui_viewport(EditorUI *ui);
 void ui_hierarchy(Scene *s, EditorUI *ui);
 void ui_properties(Scene *s, EditorUI *ui);
 void ui_add_object(Scene *s, EditorUI *ui);
-void ui_camera(EditorCamera *ec, EditorUI *ui);
+void ui_camera(Scene *s, EditorCamera *ec, EditorUI *ui);
 void ui_timeline(Scene *s, Timeline *tl, EditorUI *ui);
 
 #endif // UI_UI_H

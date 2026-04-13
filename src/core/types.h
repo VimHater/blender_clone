@@ -28,6 +28,7 @@ enum ObjectType {
     OBJ_CAPSULE,
     OBJ_POLY,
     OBJ_TEAPOT,
+    OBJ_CAMERA,
     OBJ_MODEL_FILE,
 };
 
@@ -108,6 +109,12 @@ struct SceneObject {
     float coneRadius;
     float coneHeight;
     int coneSlices;
+
+    // camera (OBJ_CAMERA)
+    float camFov;
+    float camNear;
+    float camFar;
+    bool camOrtho;
 
     // loaded model (OBJ_MODEL_FILE)
     Model model;

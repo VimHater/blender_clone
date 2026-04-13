@@ -124,7 +124,7 @@ void editor_update(Editor *ed) {
                 const char *names[] = {
                     "None", "Cube", "Sphere", "HemiSphere", "Plane",
                     "Cylinder", "Cone", "Torus", "Knot", "Capsule", "Polygon",
-                    "Teapot", "Model"
+                    "Teapot", "Camera", "Model"
                 };
                 int idx = scene_add(&ed->scene, names[ed->ui.placementType], ed->ui.placementType);
                 if (idx >= 0) {
@@ -164,22 +164,51 @@ void editor_update(Editor *ed) {
 void editor_draw(Editor *ed) {
     ui_update_layout(&ed->ui);
 
+    // determine active camera
+    Camera3D activeCam = ed->camera.cam;
+    float activeNear = ed->camera.nearPlane;
+    float activeFar = ed->camera.farPlane;
+    float activeFov = ed->camera.fov;
+    bool activeOrtho = ed->camera.ortho;
+
+    if (ed->ui.activeCameraId != 0) {
+        SceneObject *camObj = scene_get_by_id(&ed->scene, ed->ui.activeCameraId);
+        if (camObj && camObj->type == OBJ_CAMERA) {
+            // build Camera3D from scene camera transform
+            // camera looks along -Z in local space, rotated by euler angles
+            Vector3 pos = camObj->transform.position;
+            Vector3 rot = camObj->transform.rotation;
+            // compute forward direction from rotation
+            Matrix rotMat = MatrixRotateXYZ(Vector3{rot.x * DEG2RAD, rot.y * DEG2RAD, rot.z * DEG2RAD});
+            Vector3 forward = Vector3Transform(Vector3{0, 0, -1}, rotMat);
+            Vector3 up = Vector3Transform(Vector3{0, 1, 0}, rotMat);
+
+            activeCam.position = pos;
+            activeCam.target = Vector3Add(pos, forward);
+            activeCam.up = up;
+            activeCam.fovy = camObj->camFov;
+            activeCam.projection = camObj->camOrtho ? CAMERA_ORTHOGRAPHIC : CAMERA_PERSPECTIVE;
+            activeNear = camObj->camNear;
+            activeFar = camObj->camFar;
+            activeFov = camObj->camFov;
+            activeOrtho = camObj->camOrtho;
+        }
+    }
+
     // 3D scene to render texture
     BeginTextureMode(ed->ui.viewportRT);
         ClearBackground(DARKGRAY);
-        BeginMode3D(ed->camera.cam);
+        BeginMode3D(activeCam);
             // override near/far clipping planes
             {
                 double aspect = (double)ed->ui.viewportW / (double)ed->ui.viewportH;
                 Matrix proj;
-                if (ed->camera.ortho) {
-                    double top = ed->camera.fov / 2.0;
+                if (activeOrtho) {
+                    double top = activeFov / 2.0;
                     double right = top * aspect;
-                    proj = MatrixOrtho(-right, right, -top, top,
-                                       ed->camera.nearPlane, ed->camera.farPlane);
+                    proj = MatrixOrtho(-right, right, -top, top, activeNear, activeFar);
                 } else {
-                    proj = MatrixPerspective(ed->camera.fov * DEG2RAD, aspect,
-                                             ed->camera.nearPlane, ed->camera.farPlane);
+                    proj = MatrixPerspective(activeFov * DEG2RAD, aspect, activeNear, activeFar);
                 }
                 rlSetMatrixProjection(proj);
             }
@@ -203,7 +232,7 @@ void editor_draw(Editor *ed) {
             ui_viewport(&ed->ui);
             ui_hierarchy(&ed->scene, &ed->ui);
             ui_add_object(&ed->scene, &ed->ui);
-            ui_camera(&ed->camera, &ed->ui);
+            ui_camera(&ed->scene, &ed->camera, &ed->ui);
             ui_properties(&ed->scene, &ed->ui);
             ui_timeline(&ed->scene, &ed->timeline, &ed->ui);
         rlImGuiEnd();
