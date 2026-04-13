@@ -123,7 +123,8 @@ void editor_update(Editor *ed) {
             if (ed->ui.placementValid && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                 const char *names[] = {
                     "None", "Cube", "Sphere", "HemiSphere", "Plane",
-                    "Cylinder", "Cone", "Torus", "Knot", "Capsule", "Polygon", "Model"
+                    "Cylinder", "Cone", "Torus", "Knot", "Capsule", "Polygon",
+                    "Teapot", "Model"
                 };
                 int idx = scene_add(&ed->scene, names[ed->ui.placementType], ed->ui.placementType);
                 if (idx >= 0) {

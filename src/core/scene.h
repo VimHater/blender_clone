@@ -35,6 +35,10 @@ void         scene_generate_name(const Scene *s, const char *baseName, char *out
 // lookup
 SceneObject *scene_get_by_id(Scene *s, uint32_t id);
 
+// model loading
+int       scene_add_model(Scene *s, const char *filePath);
+Model     load_model_from_obj_data(const char *objData);
+
 // texture helpers
 Texture2D load_bitmap(const char *path);
 void      object_set_texture(SceneObject *obj, const char *path);

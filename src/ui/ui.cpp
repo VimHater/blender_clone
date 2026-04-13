@@ -373,6 +373,15 @@ void ui_properties(Scene *s, EditorUI *ui) {
                 ImGui::SliderInt("Sides",  &obj->polySides, 3, 64);
                 ImGui::DragFloat("Radius", &obj->polyRadius, 0.05f, 0.1f, 50.0f);
                 break;
+            case OBJ_MODEL_FILE:
+                ImGui::Text("Path: %s", obj->modelPath);
+                if (obj->modelLoaded) {
+                    ImGui::Text("Meshes: %d", obj->model.meshCount);
+                    ImGui::Text("Materials: %d", obj->model.materialCount);
+                } else {
+                    ImGui::TextColored(ImVec4(1, 0.3f, 0.3f, 1), "Failed to load model");
+                }
+                break;
             default:
                 break;
         }
@@ -411,6 +420,23 @@ void ui_add_object(Scene *s, EditorUI *ui) {
     add_object_button(ui, "Knot",       OBJ_KNOT);
     add_object_button(ui, "Capsule",    OBJ_CAPSULE);
     add_object_button(ui, "Polygon",    OBJ_POLY);
+    add_object_button(ui, "Teapot",     OBJ_TEAPOT);
+
+    ImGui::Separator();
+    ImGui::Text("Load Model File");
+    static char modelPathBuf[256] = {};
+    ImGui::SetNextItemWidth(-1);
+    ImGui::InputTextWithHint("##ModelPath", "File path (.obj, .gltf, ...)", modelPathBuf, sizeof(modelPathBuf));
+    if (ImGui::Button("Load Model", ImVec2(-1, 0))) {
+        if (modelPathBuf[0] != '\0') {
+            int idx = scene_add_model(s, modelPathBuf);
+            if (idx >= 0) {
+                scene_deselect_all(s);
+                scene_select(s, s->objects[idx].id, false, false);
+            }
+            modelPathBuf[0] = '\0';
+        }
+    }
 
     ImGui::End();
 }

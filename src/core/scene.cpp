@@ -1,7 +1,9 @@
 #include "scene.h"
+#include "builtin_objects/teapot.h"
 #include <rlgl.h>
 #include <cstring>
 #include <cstdio>
+#include <unistd.h>
 
 // ---- ObjectTransform ----
 
@@ -81,6 +83,12 @@ SceneObject object_default(const char *name, ObjectType type) {
     obj.coneSlices = 16;
     obj.modelLoaded = false;
     obj.keyframeCount = 0;
+
+    if (type == OBJ_TEAPOT) {
+        obj.model = load_model_from_obj_data(TEAPOT_OBJ_DATA);
+        obj.modelLoaded = (obj.model.meshCount > 0);
+    }
+
     return obj;
 }
 
@@ -287,6 +295,7 @@ static void draw_object(const SceneObject *obj) {
             UnloadModel(mdl);
             break;
         }
+        case OBJ_TEAPOT:
         case OBJ_MODEL_FILE:
             if (obj->modelLoaded) {
                 DrawModel(obj->model, Vector3{0,0,0}, 1.0f, c);
@@ -343,9 +352,11 @@ static void draw_selection_outline(const SceneObject *obj) {
                              Vector3{0,  obj->capsuleHeight * 0.5f, 0},
                              obj->capsuleRadius, 16, 8, sel);
             break;
+        case OBJ_TEAPOT:
         case OBJ_MODEL_FILE:
             if (obj->modelLoaded) {
-                DrawModelWires(obj->model, Vector3{0,0,0}, 1.0f, sel);
+                BoundingBox bb = GetModelBoundingBox(obj->model);
+                DrawBoundingBox(bb, sel);
             }
             break;
         default:
@@ -361,6 +372,18 @@ void scene_draw_selection(const Scene *s) {
             draw_selection_outline(&s->objects[i]);
         }
     }
+}
+
+// cached built-in models for preview
+static Model s_teapotPreview = {0};
+static bool  s_teapotPreviewLoaded = false;
+
+static Model get_teapot_preview() {
+    if (!s_teapotPreviewLoaded) {
+        s_teapotPreview = load_model_from_obj_data(TEAPOT_OBJ_DATA);
+        s_teapotPreviewLoaded = true;
+    }
+    return s_teapotPreview;
 }
 
 void scene_draw_preview(ObjectType type, Vector3 pos) {
@@ -400,6 +423,13 @@ void scene_draw_preview(ObjectType type, Vector3 pos) {
         case OBJ_POLY:
             DrawSphereWires(Vector3{0,0,0}, 1.0f, 8, 8, wire);
             break;
+        case OBJ_TEAPOT: {
+            Model m = get_teapot_preview();
+            if (m.meshCount > 0) {
+                DrawModel(m, Vector3{0,0,0}, 1.0f, ghost);
+            }
+            break;
+        }
         default:
             break;
     }
@@ -415,6 +445,54 @@ int scene_get_children(const Scene *s, int parentIndex, int *outChildren, int ma
         }
     }
     return count;
+}
+
+// ---- Built-in Model Loading ----
+
+Model load_model_from_obj_data(const char *objData) {
+    // write to a unique temp file, load, delete
+    char tmpPath[L_tmpnam + 8];
+    tmpnam(tmpPath);
+    strncat(tmpPath, ".obj", sizeof(tmpPath) - strlen(tmpPath) - 1);
+
+    FILE *f = fopen(tmpPath, "w");
+    if (f) {
+        fputs(objData, f);
+        fclose(f);
+    }
+    Model m = LoadModel(tmpPath);
+    remove(tmpPath);
+    return m;
+}
+
+// ---- Model Loading ----
+
+int scene_add_model(Scene *s, const char *filePath) {
+    if (s->objectCount >= MAX_OBJECTS) return -1;
+
+    // extract filename for display name (strip path)
+    const char *baseName = filePath;
+    for (const char *p = filePath; *p; p++) {
+        if (*p == '/' || *p == '\\') baseName = p + 1;
+    }
+
+    int idx = scene_add(s, baseName, OBJ_MODEL_FILE);
+    if (idx < 0) return -1;
+
+    SceneObject *obj = &s->objects[idx];
+    snprintf(obj->modelPath, sizeof(obj->modelPath), "%s", filePath);
+
+    // save/restore CWD — raylib's LoadModel changes it to resolve textures
+    char savedCwd[1024];
+    getcwd(savedCwd, sizeof(savedCwd));
+    obj->model = LoadModel(filePath);
+    chdir(savedCwd);
+
+    obj->modelLoaded = (obj->model.meshCount > 0);
+    printf("[MODEL] meshes=%d, materials=%d, loaded=%d\n",
+           obj->model.meshCount, obj->model.materialCount, obj->modelLoaded);
+
+    return idx;
 }
 
 // ---- Texture / Bitmap ----

@@ -27,6 +27,7 @@ enum ObjectType {
     OBJ_KNOT,
     OBJ_CAPSULE,
     OBJ_POLY,
+    OBJ_TEAPOT,
     OBJ_MODEL_FILE,
 };
 

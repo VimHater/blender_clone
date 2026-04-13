@@ -9,6 +9,7 @@ file(GLOB SOURCES
     "src/*.cpp"
     "src/core/*.cpp"
     "src/ui/*.cpp"
+    "src/builtin_objects/*.cpp"
     "rlImGui/*.cpp"
     "imgui/*.cpp"
 )
