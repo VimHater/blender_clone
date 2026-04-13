@@ -3,7 +3,15 @@
 #include <rlgl.h>
 #include <cstring>
 #include <cstdio>
+#ifdef _WIN32
+#include <direct.h>
+#define platform_getcwd _getcwd
+#define platform_chdir  _chdir
+#else
 #include <unistd.h>
+#define platform_getcwd getcwd
+#define platform_chdir  chdir
+#endif
 
 // ---- ObjectTransform ----
 
@@ -673,9 +681,9 @@ int scene_add_model(Scene *s, const char *filePath) {
 
     // save/restore CWD — raylib's LoadModel changes it to resolve textures
     char savedCwd[1024];
-    getcwd(savedCwd, sizeof(savedCwd));
+    platform_getcwd(savedCwd, sizeof(savedCwd));
     obj->model = LoadModel(filePath);
-    chdir(savedCwd);
+    platform_chdir(savedCwd);
 
     obj->modelLoaded = (obj->model.meshCount > 0);
     printf("[MODEL] meshes=%d, materials=%d, loaded=%d\n",
