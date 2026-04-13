@@ -2,7 +2,6 @@
 #define CORE_RAYCAST_H
 
 #include "scene.h"
-#include "camera.h"
 
 struct RayHitResult {
     bool hit;
@@ -13,7 +12,8 @@ struct RayHitResult {
 };
 
 RayHitResult raycast_scene(const Scene *s, Ray ray);
-RayHitResult raycast_from_mouse(const Scene *s, const EditorCamera *ec, Vector2 mousePos,
-                                int vpX, int vpY, int vpW, int vpH);
+RayHitResult raycast_from_mouse(const Scene *s, Camera3D cam, Vector2 mousePos,
+                                float vpX, float vpY, float vpW, float vpH,
+                                int rtW, int rtH);
 
 #endif // CORE_RAYCAST_H

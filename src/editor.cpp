@@ -2,6 +2,7 @@
 #include "rlImGui.h"
 #include "rlgl.h"
 #include "imgui.h"
+#include "core/raycast.h"
 #include <cstdio>
 #include <cmath>
 
@@ -146,7 +147,29 @@ void editor_update(Editor *ed) {
         }
     }
 
-    // TODO: add viewport click-to-select (raycast picking in render texture)
+    // viewport click-to-select
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        Vector2 mouse = GetMousePosition();
+        float localX = (mouse.x - ed->ui.vpImageX) / ed->ui.vpImageW;
+        float localY = (mouse.y - ed->ui.vpImageY) / ed->ui.vpImageH;
+        bool inVP = localX >= 0 && localX <= 1 && localY >= 0 && localY <= 1;
+        printf("CLICK: mouse=(%.0f,%.0f) vp=(%.0f,%.0f,%.0f,%.0f) localUV=(%.2f,%.2f) inVP=%d hovered=%d placement=%d\n",
+               mouse.x, mouse.y, ed->ui.vpImageX, ed->ui.vpImageY, ed->ui.vpImageW, ed->ui.vpImageH,
+               localX, localY, inVP, ed->ui.viewportHovered, ed->ui.placementMode);
+        if (!ed->ui.placementMode && inVP) {
+            RayHitResult hit = raycast_from_mouse(&ed->scene, ed->camera.cam, mouse,
+                ed->ui.vpImageX, ed->ui.vpImageY, ed->ui.vpImageW, ed->ui.vpImageH,
+                ed->ui.viewportW, ed->ui.viewportH);
+            printf("  raycast: hit=%d idx=%d dist=%.2f\n", hit.hit, hit.objectIndex, hit.distance);
+            bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+            if (hit.hit) {
+                uint32_t id = ed->scene.objects[hit.objectIndex].id;
+                scene_select(&ed->scene, id, ctrl, ctrl);
+            } else if (!ctrl) {
+                scene_deselect_all(&ed->scene);
+            }
+        }
+    }
 
     // delete key — remove all selected objects
     if (ed->scene.selectedCount > 0 && IsKeyPressed(KEY_DELETE) && !ImGui::GetIO().WantCaptureKeyboard) {
