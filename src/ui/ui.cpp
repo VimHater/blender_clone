@@ -26,6 +26,8 @@ void ui_init(EditorUI *ui, int vpW, int vpH) {
     ui->showCamera = true;
     ui->dockspaceInitialized = false;
     ui->activeCameraId = 0;
+    ui->gizmoActiveAxis = GIZMO_NONE;
+    ui->gizmoDragging = false;
     ui->placementMode = false;
     ui->placementValid = false;
     ui->vpImageX = ui->vpImageY = 0;

@@ -89,6 +89,13 @@ void editor_update(Editor *ed) {
     editor_camera_update(&ed->camera,
         ed->ui.viewportHovered && !ed->ui.placementMode && !ImGui::GetIO().WantCaptureKeyboard);
 
+    // transform mode shortcuts
+    if (!ImGui::GetIO().WantCaptureKeyboard) {
+        if (IsKeyPressed(KEY_T)) ed->ui.transformMode = TMODE_TRANSLATE;
+        if (IsKeyPressed(KEY_R)) ed->ui.transformMode = TMODE_ROTATE;
+        if (IsKeyPressed(KEY_Y)) ed->ui.transformMode = TMODE_SCALE;
+    }
+
     // placement mode: map mouse to ground plane y=0
     if (ed->ui.placementMode) {
         Vector2 mouse = GetMousePosition();
@@ -147,26 +154,100 @@ void editor_update(Editor *ed) {
         }
     }
 
-    // viewport click-to-select
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+    // helper: build ray from screen mouse into viewport
+    auto viewport_ray = [&](Vector2 mouse) -> Ray {
+        float localX = (mouse.x - ed->ui.vpImageX) / ed->ui.vpImageW;
+        float localY = (mouse.y - ed->ui.vpImageY) / ed->ui.vpImageH;
+        Vector2 rtMouse = { localX * (float)ed->ui.viewportW, localY * (float)ed->ui.viewportH };
+        return GetScreenToWorldRayEx(rtMouse, ed->camera.cam, ed->ui.viewportW, ed->ui.viewportH);
+    };
+
+    // gizmo drag interaction
+    if (ed->ui.gizmoDragging) {
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            ed->ui.gizmoDragging = false;
+            ed->ui.gizmoActiveAxis = GIZMO_NONE;
+        } else {
+            SceneObject *obj = scene_first_selected(&ed->scene);
+            if (obj) {
+                Vector2 mouse = GetMousePosition();
+                float dx = mouse.x - ed->ui.gizmoDragStart.x;
+                float dy = mouse.y - ed->ui.gizmoDragStart.y;
+                // screen pixel delta → world delta (approximate: scale by distance / viewport size)
+                float sensitivity = ed->camera.distance / (float)ed->ui.viewportH;
+
+                if (ed->ui.transformMode == TMODE_TRANSLATE) {
+                    float delta;
+                    if (ed->ui.gizmoActiveAxis == GIZMO_Y) delta = -dy * sensitivity;
+                    else delta = dx * sensitivity;
+
+                    if (ed->ui.gizmoActiveAxis == GIZMO_X)
+                        obj->transform.position.x = ed->ui.gizmoDragObjStart.x + delta;
+                    else if (ed->ui.gizmoActiveAxis == GIZMO_Y)
+                        obj->transform.position.y = ed->ui.gizmoDragObjStart.y + delta;
+                    else if (ed->ui.gizmoActiveAxis == GIZMO_Z)
+                        obj->transform.position.z = ed->ui.gizmoDragObjStart.z + delta;
+                } else if (ed->ui.transformMode == TMODE_ROTATE) {
+                    float delta = dx * 0.5f; // degrees per pixel
+                    if (ed->ui.gizmoActiveAxis == GIZMO_X)
+                        obj->transform.rotation.x = ed->ui.gizmoDragObjStart.x + delta;
+                    else if (ed->ui.gizmoActiveAxis == GIZMO_Y)
+                        obj->transform.rotation.y = ed->ui.gizmoDragObjStart.y + delta;
+                    else if (ed->ui.gizmoActiveAxis == GIZMO_Z)
+                        obj->transform.rotation.z = ed->ui.gizmoDragObjStart.z + delta;
+                } else if (ed->ui.transformMode == TMODE_SCALE) {
+                    float delta = dx * sensitivity;
+                    if (ed->ui.gizmoActiveAxis == GIZMO_X)
+                        obj->transform.scale.x = ed->ui.gizmoDragObjStart.x + delta;
+                    else if (ed->ui.gizmoActiveAxis == GIZMO_Y)
+                        obj->transform.scale.y = ed->ui.gizmoDragObjStart.y + delta;
+                    else if (ed->ui.gizmoActiveAxis == GIZMO_Z)
+                        obj->transform.scale.z = ed->ui.gizmoDragObjStart.z + delta;
+                }
+            }
+        }
+    }
+
+    // viewport click: gizmo pick first, then object select
+    if (!ed->ui.gizmoDragging && !ed->ui.placementMode
+        && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         Vector2 mouse = GetMousePosition();
         float localX = (mouse.x - ed->ui.vpImageX) / ed->ui.vpImageW;
         float localY = (mouse.y - ed->ui.vpImageY) / ed->ui.vpImageH;
         bool inVP = localX >= 0 && localX <= 1 && localY >= 0 && localY <= 1;
-        printf("CLICK: mouse=(%.0f,%.0f) vp=(%.0f,%.0f,%.0f,%.0f) localUV=(%.2f,%.2f) inVP=%d hovered=%d placement=%d\n",
-               mouse.x, mouse.y, ed->ui.vpImageX, ed->ui.vpImageY, ed->ui.vpImageW, ed->ui.vpImageH,
-               localX, localY, inVP, ed->ui.viewportHovered, ed->ui.placementMode);
-        if (!ed->ui.placementMode && inVP) {
-            RayHitResult hit = raycast_from_mouse(&ed->scene, ed->camera.cam, mouse,
-                ed->ui.vpImageX, ed->ui.vpImageY, ed->ui.vpImageW, ed->ui.vpImageH,
-                ed->ui.viewportW, ed->ui.viewportH);
-            printf("  raycast: hit=%d idx=%d dist=%.2f\n", hit.hit, hit.objectIndex, hit.distance);
-            bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
-            if (hit.hit) {
-                uint32_t id = ed->scene.objects[hit.objectIndex].id;
-                scene_select(&ed->scene, id, ctrl, ctrl);
-            } else if (!ctrl) {
-                scene_deselect_all(&ed->scene);
+        if (inVP) {
+            // try gizmo first
+            bool gizmoHit = false;
+            SceneObject *sel = scene_first_selected(&ed->scene);
+            if (sel) {
+                Ray ray = viewport_ray(mouse);
+                GizmoAxis axis = gizmo_hit_test(sel->transform.position, ray, ed->ui.transformMode);
+                if (axis != GIZMO_NONE) {
+                    ed->ui.gizmoActiveAxis = axis;
+                    ed->ui.gizmoDragging = true;
+                    ed->ui.gizmoDragStart = mouse;
+                    if (ed->ui.transformMode == TMODE_TRANSLATE)
+                        ed->ui.gizmoDragObjStart = sel->transform.position;
+                    else if (ed->ui.transformMode == TMODE_ROTATE)
+                        ed->ui.gizmoDragObjStart = sel->transform.rotation;
+                    else
+                        ed->ui.gizmoDragObjStart = sel->transform.scale;
+                    gizmoHit = true;
+                }
+            }
+
+            // if gizmo not hit, do object selection
+            if (!gizmoHit) {
+                RayHitResult hit = raycast_from_mouse(&ed->scene, ed->camera.cam, mouse,
+                    ed->ui.vpImageX, ed->ui.vpImageY, ed->ui.vpImageW, ed->ui.vpImageH,
+                    ed->ui.viewportW, ed->ui.viewportH);
+                bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+                if (hit.hit) {
+                    uint32_t id = ed->scene.objects[hit.objectIndex].id;
+                    scene_select(&ed->scene, id, ctrl, ctrl);
+                } else if (!ctrl) {
+                    scene_deselect_all(&ed->scene);
+                }
             }
         }
     }
@@ -240,6 +321,7 @@ void editor_draw(Editor *ed) {
             }
             scene_draw(&ed->scene, ed->ui.drawMode);
             scene_draw_selection(&ed->scene);
+            scene_draw_gizmo(&ed->scene, ed->ui.transformMode, ed->ui.gizmoActiveAxis);
             if (ed->ui.placementMode && ed->ui.placementValid) {
                 scene_draw_preview(ed->ui.placementType, ed->ui.placementPos);
             }

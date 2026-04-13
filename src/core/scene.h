@@ -39,6 +39,11 @@ SceneObject *scene_get_by_id(Scene *s, uint32_t id);
 int       scene_add_model(Scene *s, const char *filePath);
 Model     load_model_from_obj_data(const char *objData);
 
+// gizmo
+enum GizmoAxis { GIZMO_NONE = 0, GIZMO_X, GIZMO_Y, GIZMO_Z };
+void         scene_draw_gizmo(const Scene *s, TransformMode mode, GizmoAxis activeAxis);
+GizmoAxis    gizmo_hit_test(Vector3 gizmoPos, Ray ray, TransformMode mode);
+
 // texture helpers
 Texture2D load_bitmap(const char *path);
 void      object_set_texture(SceneObject *obj, const char *path);

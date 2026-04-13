@@ -37,6 +37,12 @@ struct EditorUI {
     // active camera: 0 = editor camera, otherwise ID of a scene camera object
     uint32_t activeCameraId;
 
+    // gizmo interaction
+    GizmoAxis gizmoActiveAxis;
+    bool gizmoDragging;
+    Vector2 gizmoDragStart;         // screen mouse pos at drag start
+    Vector3 gizmoDragObjStart;      // object position/rotation/scale at drag start
+
     // placement mode
     bool placementMode;
     ObjectType placementType;

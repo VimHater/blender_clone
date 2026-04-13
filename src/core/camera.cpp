@@ -1,5 +1,6 @@
 #include "camera.h"
 #include <cmath>
+#include "raylib.h"
 
 void editor_camera_init(EditorCamera *ec) {
     ec->target = Vector3{0, 0, 0};
@@ -70,8 +71,8 @@ void editor_camera_update(EditorCamera *ec, bool inputAllowed) {
     if (IsKeyDown(KEY_S)) ec->target = Vector3Add(ec->target, Vector3Scale(forwardXZ, -speed));
     if (IsKeyDown(KEY_D)) ec->target = Vector3Add(ec->target, Vector3Scale(rightXZ, speed));
     if (IsKeyDown(KEY_A)) ec->target = Vector3Add(ec->target, Vector3Scale(rightXZ, -speed));
-    if (IsKeyDown(KEY_E)) ec->target.y += speed;
-    if (IsKeyDown(KEY_Q)) ec->target.y -= speed;
+    if (IsKeyDown(KEY_LEFT_SHIFT)) ec->target.y -= speed;
+    if (IsKeyDown(KEY_SPACE)) ec->target.y += speed;
 
     editor_camera_sync(ec);
 }

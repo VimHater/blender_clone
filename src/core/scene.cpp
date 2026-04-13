@@ -452,6 +452,100 @@ void scene_draw_selection(const Scene *s) {
     }
 }
 
+// ---- Gizmo ----
+
+static const float GIZMO_LENGTH = 2.0f;
+static const float GIZMO_THICKNESS = 0.05f;
+static const float GIZMO_HIT_RADIUS = 0.15f;
+
+void scene_draw_gizmo(const Scene *s, TransformMode mode, GizmoAxis activeAxis) {
+    if (s->selectedCount == 0) return;
+    // find first selected object
+    const SceneObject *obj = nullptr;
+    for (int i = 0; i < s->objectCount; i++) {
+        if (scene_is_selected(s, s->objects[i].id)) { obj = &s->objects[i]; break; }
+    }
+    if (!obj) return;
+
+    Vector3 p = obj->transform.position;
+    float len = GIZMO_LENGTH;
+    float t = GIZMO_THICKNESS;
+
+    Color xCol = (activeAxis == GIZMO_X) ? YELLOW : RED;
+    Color yCol = (activeAxis == GIZMO_Y) ? YELLOW : GREEN;
+    Color zCol = (activeAxis == GIZMO_Z) ? YELLOW : BLUE;
+
+    if (mode == TMODE_TRANSLATE) {
+        // axis lines
+        DrawLine3D(p, Vector3{p.x + len, p.y, p.z}, xCol);
+        DrawLine3D(p, Vector3{p.x, p.y + len, p.z}, yCol);
+        DrawLine3D(p, Vector3{p.x, p.y, p.z + len}, zCol);
+        // arrowheads (DrawCylinder draws along +Y, so rotate to point along each axis)
+        float coneR = t * 2;
+        float coneH = t * 8;
+        // X arrow: rotate +Y → +X (rotate -90 around Z)
+        rlPushMatrix();
+        rlTranslatef(p.x + len, p.y, p.z);
+        rlRotatef(-90, 0, 0, 1);
+        DrawCylinder(Vector3{0,0,0}, 0.0f, coneR, coneH, 8, xCol);
+        rlPopMatrix();
+        // Y arrow: already along +Y
+        DrawCylinder(Vector3{p.x, p.y + len, p.z}, 0.0f, coneR, coneH, 8, yCol);
+        // Z arrow: rotate +Y → +Z (rotate 90 around X)
+        rlPushMatrix();
+        rlTranslatef(p.x, p.y, p.z + len);
+        rlRotatef(90, 1, 0, 0);
+        DrawCylinder(Vector3{0,0,0}, 0.0f, coneR, coneH, 8, zCol);
+        rlPopMatrix();
+    } else if (mode == TMODE_ROTATE) {
+        // draw circles for each axis
+        DrawCircle3D(p, len * 0.8f, Vector3{0, 1, 0}, 0, xCol);   // X rotation = around X = YZ plane
+        DrawCircle3D(p, len * 0.8f, Vector3{1, 0, 0}, 90, yCol);   // Y rotation
+        DrawCircle3D(p, len * 0.8f, Vector3{0, 0, 1}, 90, zCol);   // Z rotation
+    } else if (mode == TMODE_SCALE) {
+        // axis lines with cubes at end
+        DrawLine3D(p, Vector3{p.x + len, p.y, p.z}, xCol);
+        DrawLine3D(p, Vector3{p.x, p.y + len, p.z}, yCol);
+        DrawLine3D(p, Vector3{p.x, p.y, p.z + len}, zCol);
+        float cs = t * 4;
+        DrawCube(Vector3{p.x + len, p.y, p.z}, cs, cs, cs, xCol);
+        DrawCube(Vector3{p.x, p.y + len, p.z}, cs, cs, cs, yCol);
+        DrawCube(Vector3{p.x, p.y, p.z + len}, cs, cs, cs, zCol);
+    }
+}
+
+GizmoAxis gizmo_hit_test(Vector3 gizmoPos, Ray ray, TransformMode mode) {
+    float len = GIZMO_LENGTH;
+    float r = GIZMO_HIT_RADIUS;
+    (void)mode;
+
+    // test each axis as a thin bounding box
+    BoundingBox xBox = {
+        Vector3{gizmoPos.x, gizmoPos.y - r, gizmoPos.z - r},
+        Vector3{gizmoPos.x + len, gizmoPos.y + r, gizmoPos.z + r}
+    };
+    BoundingBox yBox = {
+        Vector3{gizmoPos.x - r, gizmoPos.y, gizmoPos.z - r},
+        Vector3{gizmoPos.x + r, gizmoPos.y + len, gizmoPos.z + r}
+    };
+    BoundingBox zBox = {
+        Vector3{gizmoPos.x - r, gizmoPos.y - r, gizmoPos.z},
+        Vector3{gizmoPos.x + r, gizmoPos.y + r, gizmoPos.z + len}
+    };
+
+    float bestDist = 1e30f;
+    GizmoAxis best = GIZMO_NONE;
+
+    RayCollision col = GetRayCollisionBox(ray, xBox);
+    if (col.hit && col.distance < bestDist) { bestDist = col.distance; best = GIZMO_X; }
+    col = GetRayCollisionBox(ray, yBox);
+    if (col.hit && col.distance < bestDist) { bestDist = col.distance; best = GIZMO_Y; }
+    col = GetRayCollisionBox(ray, zBox);
+    if (col.hit && col.distance < bestDist) { bestDist = col.distance; best = GIZMO_Z; }
+
+    return best;
+}
+
 // cached built-in models for preview
 static Model s_teapotPreview = {0};
 static bool  s_teapotPreviewLoaded = false;
