@@ -341,7 +341,14 @@ void editor_update(Editor *ed) {
                     else if (ed->ui.gizmoActiveAxis == GIZMO_Z)
                         obj->transform.rotation.z = ed->ui.gizmoDragObjStart.z + delta;
                 } else if (ed->ui.transformMode == TMODE_SCALE) {
-                    float delta = dx * sensitivity;
+                    Vector3 worldAxis = {0};
+                    if (ed->ui.gizmoActiveAxis == GIZMO_X) worldAxis = Vector3{1, 0, 0};
+                    else if (ed->ui.gizmoActiveAxis == GIZMO_Y) worldAxis = Vector3{0, 1, 0};
+                    else if (ed->ui.gizmoActiveAxis == GIZMO_Z) worldAxis = Vector3{0, 0, 1};
+
+                    Vector2 screenDir = axis_screen_dir(worldAxis);
+                    float delta = (dx * screenDir.x + dy * screenDir.y) * sensitivity;
+
                     if (ed->ui.gizmoActiveAxis == GIZMO_X)
                         obj->transform.scale.x = ed->ui.gizmoDragObjStart.x + delta;
                     else if (ed->ui.gizmoActiveAxis == GIZMO_Y)
