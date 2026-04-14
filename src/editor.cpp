@@ -7,7 +7,7 @@
 #include <cmath>
 
 #ifdef _WIN32
-static const float BASE_FONT_SIZE = 18.0f;
+static const float BASE_FONT_SIZE = 20.0f;
 #else
 static const float BASE_FONT_SIZE = 36.0f;
 #endif
@@ -42,7 +42,7 @@ static void rebuild_font(EditorUI *ui, float fontSize) {
 
 void editor_init(Editor *ed, int screenW, int screenH) {
     // window
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_UNDECORATED | FLAG_WINDOW_HIGHDPI);
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_UNDECORATED | FLAG_WINDOW_HIGHDPI | FLAG_MSAA_4X_HINT);
     InitWindow(screenW, screenH, "btw");
     SetTargetFPS(60);
     SetExitKey(KEY_NULL); // disable ESC to quit
