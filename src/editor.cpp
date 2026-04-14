@@ -6,12 +6,8 @@
 #include <cstdio>
 #include <cmath>
 
-#ifdef _WIN32
-static const float BASE_FONT_SIZE = 20.0f;
-#else
 static const float BASE_FONT_SIZE = 36.0f;
-#endif
-static const float REFERENCE_HEIGHT = 1080.0f;
+static const float GLOBAL_FONT_SCALE = 0.8f;
 
 // custom glyph ranges: default + symbols used by window controls
 static const ImWchar* get_glyph_ranges() {
@@ -36,13 +32,13 @@ static void rebuild_font(EditorUI *ui, float fontSize) {
     fontCfg.GlyphRanges = get_glyph_ranges();
     io.Fonts->AddFontFromFileTTF(ui->fontPath, fontSize, &fontCfg);
     io.Fonts->Build();
-    io.FontGlobalScale = 1.0f;
+    io.FontGlobalScale = GLOBAL_FONT_SCALE;
     ui->lastFontSize = fontSize;
 }
 
 void editor_init(Editor *ed, int screenW, int screenH) {
     // window
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_UNDECORATED | FLAG_WINDOW_HIGHDPI | FLAG_MSAA_4X_HINT);
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_UNDECORATED | FLAG_MSAA_4X_HINT);
     InitWindow(screenW, screenH, "btw");
     SetTargetFPS(60);
     SetExitKey(KEY_NULL); // disable ESC to quit
@@ -79,7 +75,7 @@ void editor_init(Editor *ed, int screenW, int screenH) {
     float initSize = BASE_FONT_SIZE * (actualH / 1080.0f) * ed->ui.uiScale;
     if (initSize < 10.0f) initSize = 10.0f;
     io.Fonts->AddFontFromFileTTF(ed->ui.fontPath, initSize, &fontCfg);
-    io.FontGlobalScale = 1.0f;
+    io.FontGlobalScale = GLOBAL_FONT_SCALE;
     ed->ui.lastFontSize = 0.0f; // force rebuild on first frame (window size may not be final yet)
     rlImGuiEndInitImGui();
 
@@ -192,9 +188,7 @@ bool editor_should_close(const Editor *ed) {
 
 void editor_update(Editor *ed) {
     // font scaling — rebuild atlas when target pixel size changes
-    float screenH = (float)GetScreenHeight();
-    if (screenH < 100.0f) screenH = REFERENCE_HEIGHT;
-    float targetFontSize = BASE_FONT_SIZE * (screenH / REFERENCE_HEIGHT) * ed->ui.uiScale;
+    float targetFontSize = BASE_FONT_SIZE * ((float)GetScreenHeight() / 1080.0f) * ed->ui.uiScale;
     if (targetFontSize < 10.0f) targetFontSize = 10.0f;
     // only rebuild if size changed by more than 1px (avoid constant rebuilds during resize)
     if (fabsf(targetFontSize - ed->ui.lastFontSize) > 1.0f) {
