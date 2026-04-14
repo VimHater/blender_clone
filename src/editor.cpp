@@ -38,7 +38,7 @@ static void rebuild_font(EditorUI *ui, float fontSize) {
 
 void editor_init(Editor *ed, int screenW, int screenH) {
     // window
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_UNDECORATED);
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_UNDECORATED | FLAG_WINDOW_HIGHDPI);
     InitWindow(screenW, screenH, "btw");
     SetTargetFPS(60);
     SetExitKey(KEY_NULL); // disable ESC to quit
@@ -190,9 +190,7 @@ void editor_update(Editor *ed) {
     // font scaling — rebuild atlas when target pixel size changes
     float screenH = (float)GetScreenHeight();
     if (screenH < 100.0f) screenH = REFERENCE_HEIGHT;
-    Vector2 dpiScale = GetWindowScaleDPI();
-    float dpi = (dpiScale.y > 0.5f) ? dpiScale.y : 1.0f;
-    float targetFontSize = BASE_FONT_SIZE * (screenH / REFERENCE_HEIGHT) * ed->ui.uiScale / dpi;
+    float targetFontSize = BASE_FONT_SIZE * (screenH / REFERENCE_HEIGHT) * ed->ui.uiScale;
     if (targetFontSize < 10.0f) targetFontSize = 10.0f;
     // only rebuild if size changed by more than 1px (avoid constant rebuilds during resize)
     if (fabsf(targetFontSize - ed->ui.lastFontSize) > 1.0f) {
