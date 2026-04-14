@@ -41,7 +41,7 @@ static void rebuild_font(EditorUI *ui, float fontSize) {
     fontCfg.GlyphRanges = get_glyph_ranges();
     io.Fonts->AddFontFromFileTTF(ui->fontPath, fontSize, &fontCfg);
     io.Fonts->Build();
-    io.FontGlobalScale = compute_display_scale();
+    io.FontGlobalScale = 1.0f;
     ui->lastFontSize = fontSize;
 }
 
@@ -84,7 +84,7 @@ void editor_init(Editor *ed, int screenW, int screenH) {
     float initSize = BASE_FONT_SIZE * (actualH / 1080.0f) * ed->ui.uiScale;
     if (initSize < 10.0f) initSize = 10.0f;
     io.Fonts->AddFontFromFileTTF(ed->ui.fontPath, initSize, &fontCfg);
-    io.FontGlobalScale = compute_display_scale();
+    io.FontGlobalScale = 1.0f;
     ed->ui.lastFontSize = 0.0f; // force rebuild on first frame (window size may not be final yet)
     rlImGuiEndInitImGui();
 
