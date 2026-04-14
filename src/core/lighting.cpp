@@ -28,9 +28,34 @@ static const char *VS_COMMON =
     "    gl_Position = mvp * vec4(vertexPosition, 1.0);\n"
     "}\n";
 
+// ---- Shadow helper (shared across lit shaders) ----
+
+#define SHADOW_COMMON \
+    "uniform mat4 lightSpaceMatrix;\n" \
+    "uniform sampler2D shadowMap;\n" \
+    "uniform int hasShadow;\n" \
+    "float calcShadow(vec3 worldPos, vec3 normal, vec3 lightDir) {\n" \
+    "    if (hasShadow == 0) return 0.0;\n" \
+    "    vec4 lsPos = lightSpaceMatrix * vec4(worldPos, 1.0);\n" \
+    "    if (abs(lsPos.w) < 0.001) return 0.0;\n" \
+    "    vec3 projCoords = lsPos.xyz / lsPos.w;\n" \
+    "    projCoords = projCoords * 0.5 + 0.5;\n" \
+    "    if (projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 || projCoords.y < 0.0 || projCoords.y > 1.0) return 0.0;\n" \
+    "    float bias = max(0.005 * (1.0 - dot(normal, lightDir)), 0.001);\n" \
+    "    float shadow = 0.0;\n" \
+    "    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);\n" \
+    "    for (int x = -1; x <= 1; x++) {\n" \
+    "        for (int y = -1; y <= 1; y++) {\n" \
+    "            float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r;\n" \
+    "            shadow += (projCoords.z - bias > pcfDepth) ? 1.0 : 0.0;\n" \
+    "        }\n" \
+    "    }\n" \
+    "    return shadow / 9.0;\n" \
+    "}\n"
+
 // ---- Fragment shaders ----
 
-// Default: Blinn-Phong
+// Default: Blinn-Phong with shadow
 static const char *FS_DEFAULT =
     "#version 330\n"
     "in vec3 fragPosition;\n"
@@ -50,12 +75,14 @@ static const char *FS_DEFAULT =
     "uniform vec3 lightDir[MAX_LIGHTS];\n"
     "uniform vec3 lightColor[MAX_LIGHTS];\n"
     "uniform float lightIntensity[MAX_LIGHTS];\n"
+    SHADOW_COMMON
     "out vec4 finalColor;\n"
     "void main() {\n"
     "    vec4 texelColor = texture(texture0, fragTexCoord);\n"
     "    vec4 tint = colDiffuse * fragColor;\n"
     "    vec3 baseColor = texelColor.rgb * tint.rgb;\n"
     "    vec3 normal = normalize(fragNormal);\n"
+    "    if (!gl_FrontFacing) normal = -normal;\n"
     "    vec3 viewDir = normalize(viewPos - fragPosition);\n"
     "    vec3 totalDiffuse = vec3(0.0);\n"
     "    vec3 totalSpecular = vec3(0.0);\n"
@@ -77,9 +104,14 @@ static const char *FS_DEFAULT =
     "            vec3 halfDir = normalize(lightVec + viewDir);\n"
     "            specCo = pow(max(dot(normal, halfDir), 0.0), 32.0);\n"
     "        }\n"
+    "        // shadow only for first directional light\n"
+    "        float shadow = 0.0;\n"
+    "        if (i == 0 && lightType[i] == LIGHT_DIRECTIONAL) {\n"
+    "            shadow = calcShadow(fragPosition, normal, lightVec);\n"
+    "        }\n"
     "        vec3 radiance = lightColor[i] * lightIntensity[i] * attenuation;\n"
-    "        totalDiffuse += radiance * NdotL;\n"
-    "        totalSpecular += radiance * specCo;\n"
+    "        totalDiffuse += radiance * NdotL * (1.0 - shadow);\n"
+    "        totalSpecular += radiance * specCo * (1.0 - shadow);\n"
     "    }\n"
     "    vec3 ambientTerm = ambient.rgb * baseColor;\n"
     "    vec3 diffuseTerm = totalDiffuse * baseColor;\n"
@@ -104,7 +136,7 @@ static const char *FS_UNLIT =
     "    finalColor = texelColor * colDiffuse * fragColor;\n"
     "}\n";
 
-// Toon: cel shading with discrete light bands
+// Toon: cel shading with shadow
 static const char *FS_TOON =
     "#version 330\n"
     "in vec3 fragPosition;\n"
@@ -124,12 +156,14 @@ static const char *FS_TOON =
     "uniform vec3 lightDir[MAX_LIGHTS];\n"
     "uniform vec3 lightColor[MAX_LIGHTS];\n"
     "uniform float lightIntensity[MAX_LIGHTS];\n"
+    SHADOW_COMMON
     "out vec4 finalColor;\n"
     "void main() {\n"
     "    vec4 texelColor = texture(texture0, fragTexCoord);\n"
     "    vec4 tint = colDiffuse * fragColor;\n"
     "    vec3 baseColor = texelColor.rgb * tint.rgb;\n"
     "    vec3 normal = normalize(fragNormal);\n"
+    "    if (!gl_FrontFacing) normal = -normal;\n"
     "    float totalLight = 0.0;\n"
     "    for (int i = 0; i < MAX_LIGHTS; i++) {\n"
     "        if (i >= lightCount) break;\n"
@@ -143,9 +177,12 @@ static const char *FS_TOON =
     "        } else {\n"
     "            lightVec = normalize(-lightDir[i]);\n"
     "        }\n"
-    "        totalLight += max(dot(normal, lightVec), 0.0) * lightIntensity[i] * attenuation;\n"
+    "        float shadow = 0.0;\n"
+    "        if (i == 0 && lightType[i] == LIGHT_DIRECTIONAL) {\n"
+    "            shadow = calcShadow(fragPosition, normal, lightVec);\n"
+    "        }\n"
+    "        totalLight += max(dot(normal, lightVec), 0.0) * lightIntensity[i] * attenuation * (1.0 - shadow);\n"
     "    }\n"
-    "    // quantize into 4 bands\n"
     "    float band;\n"
     "    if (totalLight > 0.75) band = 1.0;\n"
     "    else if (totalLight > 0.4) band = 0.7;\n"
@@ -171,7 +208,7 @@ static const char *FS_NORMAL_VIS =
     "    finalColor = vec4(normal * 0.5 + 0.5, 1.0);\n"
     "}\n";
 
-// Fresnel: rim lighting / edge glow
+// Fresnel: rim lighting with shadow
 static const char *FS_FRESNEL =
     "#version 330\n"
     "in vec3 fragPosition;\n"
@@ -191,6 +228,7 @@ static const char *FS_FRESNEL =
     "uniform vec3 lightDir[MAX_LIGHTS];\n"
     "uniform vec3 lightColor[MAX_LIGHTS];\n"
     "uniform float lightIntensity[MAX_LIGHTS];\n"
+    SHADOW_COMMON
     "out vec4 finalColor;\n"
     "void main() {\n"
     "    vec4 texelColor = texture(texture0, fragTexCoord);\n"
@@ -198,7 +236,6 @@ static const char *FS_FRESNEL =
     "    vec3 baseColor = texelColor.rgb * tint.rgb;\n"
     "    vec3 normal = normalize(fragNormal);\n"
     "    vec3 viewDir = normalize(viewPos - fragPosition);\n"
-    "    // standard diffuse\n"
     "    vec3 totalDiffuse = vec3(0.0);\n"
     "    for (int i = 0; i < MAX_LIGHTS; i++) {\n"
     "        if (i >= lightCount) break;\n"
@@ -213,9 +250,12 @@ static const char *FS_FRESNEL =
     "            lightVec = normalize(-lightDir[i]);\n"
     "        }\n"
     "        float NdotL = max(dot(normal, lightVec), 0.0);\n"
-    "        totalDiffuse += lightColor[i] * lightIntensity[i] * attenuation * NdotL;\n"
+    "        float shadow = 0.0;\n"
+    "        if (i == 0 && lightType[i] == LIGHT_DIRECTIONAL) {\n"
+    "            shadow = calcShadow(fragPosition, normal, lightVec);\n"
+    "        }\n"
+    "        totalDiffuse += lightColor[i] * lightIntensity[i] * attenuation * NdotL * (1.0 - shadow);\n"
     "    }\n"
-    "    // fresnel rim\n"
     "    float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), 3.0);\n"
     "    vec3 rimColor = vec3(0.6, 0.8, 1.0);\n"
     "    vec3 result = baseColor * (ambient.rgb + totalDiffuse) + rimColor * fresnel * 0.8;\n"
@@ -244,6 +284,9 @@ static void resolve_light_uniforms(LightingState *ls, int idx) {
     ls->lightCountLoc[idx] = GetShaderLocation(s, "lightCount");
     ls->ambientLoc[idx] = GetShaderLocation(s, "ambient");
     ls->viewPosLoc[idx] = GetShaderLocation(s, "viewPos");
+    ls->lightSpaceMatrixLoc[idx] = GetShaderLocation(s, "lightSpaceMatrix");
+    ls->shadowMapLoc[idx] = GetShaderLocation(s, "shadowMap");
+    ls->hasShadowLoc[idx] = GetShaderLocation(s, "hasShadow");
 
     char buf[64];
     for (int i = 0; i < MAX_SHADER_LIGHTS; i++) {
@@ -342,5 +385,29 @@ void lighting_update_shader(LightingState *ls, Vector3 cameraPos) {
             SetShaderValue(ls->shaders[s], ls->lightLocs[s][i][3], ld->color, SHADER_UNIFORM_VEC3);
             SetShaderValue(ls->shaders[s], ls->lightLocs[s][i][4], &ld->intensity, SHADER_UNIFORM_FLOAT);
         }
+    }
+}
+
+void lighting_bind_shadow(LightingState *ls, ShadowMap *sm) {
+    bool active = sm && sm->initialized;
+    int flag = active ? 1 : 0;
+
+    for (int s = 0; s < SHADER_COUNT; s++) {
+        if (!ls->shaderLoaded[s] || !SHADER_DEFS[s].hasLighting) continue;
+
+        SetShaderValue(ls->shaders[s], ls->hasShadowLoc[s], &flag, SHADER_UNIFORM_INT);
+
+        if (active) {
+            int slot = 1;
+            SetShaderValue(ls->shaders[s], ls->shadowMapLoc[s], &slot, SHADER_UNIFORM_INT);
+            SetShaderValueMatrix(ls->shaders[s], ls->lightSpaceMatrixLoc[s], sm->lightSpaceMatrix);
+        }
+    }
+
+    // bind depth texture to slot 1
+    if (active) {
+        rlActiveTextureSlot(1);
+        rlEnableTexture(sm->depthTexture);
+        rlActiveTextureSlot(0);
     }
 }

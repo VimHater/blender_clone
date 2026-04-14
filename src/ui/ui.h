@@ -67,5 +67,6 @@ void ui_add_object(Scene *s, EditorUI *ui);
 void ui_camera(Scene *s, EditorCamera *ec, EditorUI *ui);
 void ui_timeline(Scene *s, Timeline *tl, EditorUI *ui);
 void ui_error_popup(EditorUI *ui);
+void ui_shortcut_popup();
 
 #endif // UI_UI_H

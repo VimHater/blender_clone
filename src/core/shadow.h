@@ -4,16 +4,17 @@
 #include "types.h"
 
 struct ShadowMap {
-    RenderTexture2D depthTarget;
+    RenderTexture2D rt;          // raylib render texture (color + depth)
+    unsigned int depthTexture;   // separate depth texture we can sample
     int resolution;
-    Camera3D lightCam;
     Shader depthShader;
-    Shader shadowShader;
     bool initialized;
+
+    Matrix lightSpaceMatrix;
 };
 
 void shadowmap_init(ShadowMap *sm, int resolution);
-void shadowmap_begin(ShadowMap *sm, Vector3 lightDir);
+void shadowmap_begin(ShadowMap *sm, Vector3 lightDir, Vector3 sceneCenter, float sceneRadius);
 void shadowmap_end(ShadowMap *sm);
 void shadowmap_unload(ShadowMap *sm);
 

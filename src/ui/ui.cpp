@@ -129,6 +129,53 @@ void ui_error_popup(EditorUI *ui) {
     }
 }
 
+void ui_shortcut_popup() {
+    if (!IsKeyDown(KEY_SLASH)) return;
+
+    ImGuiIO &io = ImGui::GetIO();
+    ImVec2 center(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f);
+    ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(0, 0)); // auto-size
+
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove
+        | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize
+        | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+
+    if (ImGui::Begin("##Shortcuts", nullptr, flags)) {
+        ImGui::Text("Keyboard Shortcuts");
+        ImGui::Separator();
+
+        ImGui::Text("Camera");
+        ImGui::BulletText("W/A/S/D   Move camera");
+        ImGui::BulletText("Space     Move up");
+        ImGui::BulletText("Shift     Move down");
+        ImGui::BulletText("MMB drag  Orbit");
+        ImGui::BulletText("G + mouse Orbit");
+        ImGui::BulletText("Shift+MMB Pan");
+        ImGui::BulletText("G+Ctrl    Pan");
+        ImGui::BulletText("Scroll    Zoom");
+
+        ImGui::Separator();
+        ImGui::Text("Selection");
+        ImGui::BulletText("LMB       Select object");
+        ImGui::BulletText("Ctrl+LMB  Multi-select");
+        ImGui::BulletText("Delete    Delete selected");
+
+        ImGui::Separator();
+        ImGui::Text("Transform");
+        ImGui::BulletText("T         Translate mode");
+        ImGui::BulletText("R         Rotate mode");
+        ImGui::BulletText("Y         Scale mode");
+        ImGui::BulletText("Drag axis Gizmo transform");
+
+        ImGui::Separator();
+        ImGui::Text("Placement");
+        ImGui::BulletText("LMB       Place object");
+        ImGui::BulletText("Esc/RMB   Cancel");
+    }
+    ImGui::End();
+}
+
 // ---- Menu Bar ----
 
 void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui) {
@@ -155,6 +202,11 @@ void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui) {
             }
             ImGui::EndMenu();
         }
+        // right-aligned shortcut hint
+        float hint_w = ImGui::CalcTextSize("/ Shortcuts").x + ImGui::GetStyle().ItemSpacing.x * 2;
+        ImGui::SameLine(ImGui::GetWindowWidth() - hint_w);
+        ImGui::TextDisabled("/ Shortcuts");
+
         ImGui::EndMainMenuBar();
     }
 }

@@ -33,7 +33,7 @@ void editor_init(Editor *ed, int screenW, int screenH) {
     editor_camera_init(&ed->camera);
     timeline_init(&ed->timeline);
     ui_init(&ed->ui, screenW, screenH);
-    shadowmap_init(&ed->shadowMap, 1024);
+    shadowmap_init(&ed->shadowMap, 4096);
 
     // store font path — try ../font/ first (build/), then ../../font/ (build/Debug/)
     {
@@ -321,6 +321,32 @@ void editor_draw(Editor *ed) {
         }
     }
 
+    // collect lights for this frame
+    lighting_collect(&ed->lighting, &ed->scene);
+    lighting_update_shader(&ed->lighting, activeCam.position);
+
+    // shadow pass: render depth from the first directional light
+    bool hasShadow = false;
+    if (ed->shadowMap.initialized) {
+        for (int i = 0; i < ed->lighting.lightCount; i++) {
+            if (ed->lighting.lights[i].type == LIGHT_DIRECTIONAL) {
+                Vector3 dir = ed->lighting.lights[i].direction;
+                float sceneRadius = activeFar * 0.3f;
+                if (sceneRadius > 50.0f) sceneRadius = 50.0f;
+                Vector3 sceneCenter = ed->camera.target;
+
+                shadowmap_begin(&ed->shadowMap, dir, sceneCenter, sceneRadius);
+                BeginShaderMode(ed->shadowMap.depthShader);
+                scene_draw(&ed->scene, DRAW_SOLID, NULL);
+                EndShaderMode();
+                shadowmap_end(&ed->shadowMap);
+                hasShadow = true;
+                break;
+            }
+        }
+    }
+    lighting_bind_shadow(&ed->lighting, hasShadow ? &ed->shadowMap : NULL);
+
     // 3D scene to render texture
     BeginTextureMode(ed->ui.viewportRT);
         ClearBackground(DARKGRAY);
@@ -341,9 +367,7 @@ void editor_draw(Editor *ed) {
             if (ed->ui.showGrid) {
                 DrawGrid(ed->ui.gridSize, ed->ui.gridSpacing);
             }
-            // lighting
-            lighting_collect(&ed->lighting, &ed->scene);
-            lighting_update_shader(&ed->lighting, activeCam.position);
+            // main pass with lighting + shadows
             scene_draw(&ed->scene, ed->ui.drawMode, &ed->lighting);
             scene_draw_selection(&ed->scene);
             scene_draw_gizmo(&ed->scene, ed->ui.transformMode, ed->ui.gizmoActiveAxis);
@@ -366,6 +390,7 @@ void editor_draw(Editor *ed) {
             ui_properties(&ed->scene, &ed->ui);
             ui_timeline(&ed->scene, &ed->timeline, &ed->ui);
             ui_error_popup(&ed->ui);
+            ui_shortcut_popup();
         rlImGuiEnd();
     EndDrawing();
 }

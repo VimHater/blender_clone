@@ -2,6 +2,7 @@
 #define CORE_LIGHTING_H
 
 #include "types.h"
+#include "shadow.h"
 
 #define MAX_SHADER_LIGHTS MAX_LIGHTS
 
@@ -23,6 +24,11 @@ struct LightingState {
     int viewPosLoc[SHADER_COUNT];
     int lightLocs[SHADER_COUNT][MAX_SHADER_LIGHTS][5]; // type, pos, dir, color, intensity
 
+    // shadow uniforms
+    int lightSpaceMatrixLoc[SHADER_COUNT];
+    int shadowMapLoc[SHADER_COUNT];
+    int hasShadowLoc[SHADER_COUNT];
+
     float ambientColor[4];
     LightData lights[MAX_SHADER_LIGHTS];
     int lightCount;
@@ -32,5 +38,6 @@ void lighting_init(LightingState *ls);
 void lighting_shutdown(LightingState *ls);
 void lighting_collect(LightingState *ls, const struct Scene *s);
 void lighting_update_shader(LightingState *ls, Vector3 cameraPos);
+void lighting_bind_shadow(LightingState *ls, ShadowMap *sm);
 
 #endif // CORE_LIGHTING_H

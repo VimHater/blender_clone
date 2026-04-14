@@ -4,6 +4,7 @@
 #include <rlgl.h>
 #include <cstring>
 #include <cstdio>
+#include <cmath>
 #ifdef _WIN32
 #include <direct.h>
 #define platform_getcwd _getcwd
@@ -13,6 +14,39 @@
 #define platform_getcwd getcwd
 #define platform_chdir  chdir
 #endif
+
+// ---- UV generation for models without texture coords ----
+
+static void gen_spherical_uvs(Mesh *mesh) {
+    if (!mesh->texcoords) {
+        mesh->texcoords = (float *)RL_MALLOC(mesh->vertexCount * 2 * sizeof(float));
+    }
+    // find bounding box center
+    float cx = 0, cy = 0, cz = 0;
+    for (int i = 0; i < mesh->vertexCount; i++) {
+        cx += mesh->vertices[i * 3 + 0];
+        cy += mesh->vertices[i * 3 + 1];
+        cz += mesh->vertices[i * 3 + 2];
+    }
+    cx /= mesh->vertexCount;
+    cy /= mesh->vertexCount;
+    cz /= mesh->vertexCount;
+
+    for (int i = 0; i < mesh->vertexCount; i++) {
+        float x = mesh->vertices[i * 3 + 0] - cx;
+        float y = mesh->vertices[i * 3 + 1] - cy;
+        float z = mesh->vertices[i * 3 + 2] - cz;
+        float len = sqrtf(x * x + y * y + z * z);
+        if (len < 0.0001f) len = 0.0001f;
+        x /= len; y /= len; z /= len;
+        float u = 0.5f + atan2f(z, x) / (2.0f * PI);
+        float v = 0.5f - asinf(y) / PI;
+        mesh->texcoords[i * 2 + 0] = u;
+        mesh->texcoords[i * 2 + 1] = v;
+    }
+    // re-upload to GPU
+    UpdateMeshBuffer(*mesh, 1, mesh->texcoords, mesh->vertexCount * 2 * sizeof(float), 0);
+}
 
 // ---- ObjectTransform ----
 
@@ -110,6 +144,11 @@ SceneObject object_default(const char *name, ObjectType type) {
     if (type == OBJ_TEAPOT) {
         obj.model = load_model_from_obj_data(TEAPOT_OBJ_DATA);
         obj.modelLoaded = (obj.model.meshCount > 0);
+        if (obj.modelLoaded) {
+            for (int i = 0; i < obj.model.meshCount; i++) {
+                gen_spherical_uvs(&obj.model.meshes[i]);
+            }
+        }
     }
 
     return obj;
@@ -307,9 +346,12 @@ static void draw_model_object(const SceneObject *obj, DrawMode mode, Color c, Sh
     if (shader) {
         mdl.materials[0].shader = *shader;
     }
+    bool doubleSided = (obj->type == OBJ_PLANE);
+    if (doubleSided) { rlDrawRenderBatchActive(); rlDisableBackfaceCulling(); }
     if (mode == DRAW_SOLID)          DrawModel(mdl, Vector3{0,0,0}, 1.0f, c);
     else if (mode == DRAW_WIREFRAME) DrawModelWires(mdl, Vector3{0,0,0}, 1.0f, c);
     else                             DrawModelPoints(mdl, Vector3{0,0,0}, 1.0f, c);
+    if (doubleSided) { rlDrawRenderBatchActive(); rlEnableBackfaceCulling(); }
     // clear borrowed resources before unloading model
     mdl.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = Texture2D{0};
     mdl.materials[0].shader = Shader{0};
@@ -326,64 +368,24 @@ static void draw_object(const SceneObject *obj, DrawMode mode, Shader *shader) {
     Color c = obj->material.color;
     bool textured = obj->material.hasTexture;
 
-    // for textured primitives (or mesh-only types), use model-based rendering
-    if (textured && obj->type != OBJ_CAMERA && obj->type != OBJ_TEAPOT
-        && obj->type != OBJ_MODEL_FILE) {
-        draw_model_object(obj, mode, c, shader);
-        rlPopMatrix();
-        return;
-    }
-
+    // use model-based rendering for all mesh-able primitives (proper matModel/matNormal for lighting)
     switch (obj->type) {
         case OBJ_CUBE:
-            if (mode == DRAW_SOLID) {
-                DrawCube(Vector3{0,0,0}, obj->cubeSize[0], obj->cubeSize[1], obj->cubeSize[2], c);
-                DrawCubeWires(Vector3{0,0,0}, obj->cubeSize[0], obj->cubeSize[1], obj->cubeSize[2], BLACK);
-            } else if (mode == DRAW_WIREFRAME) {
-                DrawCubeWires(Vector3{0,0,0}, obj->cubeSize[0], obj->cubeSize[1], obj->cubeSize[2], c);
-            } else {
-                DrawPoint3D(Vector3{0,0,0}, c);
-            }
-            break;
         case OBJ_SPHERE:
-            if (mode == DRAW_SOLID)
-                DrawSphereEx(Vector3{0,0,0}, obj->sphereRadius, obj->sphereRings, obj->sphereSlices, c);
-            else if (mode == DRAW_WIREFRAME)
-                DrawSphereWires(Vector3{0,0,0}, obj->sphereRadius, obj->sphereRings, obj->sphereSlices, c);
-            else
-                DrawPoint3D(Vector3{0,0,0}, c);
-            break;
         case OBJ_PLANE:
-            if (mode == DRAW_SOLID)
-                DrawPlane(Vector3{0,0,0}, Vector2{obj->cubeSize[0], obj->cubeSize[2]}, c);
-            else if (mode == DRAW_WIREFRAME)
-                DrawCubeWires(Vector3{0,0,0}, obj->cubeSize[0], 0.01f, obj->cubeSize[2], c);
-            else
-                DrawPoint3D(Vector3{0,0,0}, c);
-            break;
         case OBJ_CYLINDER:
-            if (mode == DRAW_SOLID)
-                DrawCylinder(Vector3{0,0,0}, obj->cylinderRadiusTop, obj->cylinderRadiusBottom,
-                             obj->cylinderHeight, 16, c);
-            else if (mode == DRAW_WIREFRAME)
-                DrawCylinderWires(Vector3{0,0,0}, obj->cylinderRadiusTop, obj->cylinderRadiusBottom,
-                                  obj->cylinderHeight, 16, c);
-            else
-                DrawPoint3D(Vector3{0,0,0}, c);
-            break;
         case OBJ_CONE:
-            if (mode == DRAW_SOLID)
-                DrawCylinder(Vector3{0,0,0}, 0.0f, obj->coneRadius, obj->coneHeight, obj->coneSlices, c);
-            else if (mode == DRAW_WIREFRAME)
-                DrawCylinderWires(Vector3{0,0,0}, 0.0f, obj->coneRadius, obj->coneHeight, obj->coneSlices, c);
-            else
-                DrawPoint3D(Vector3{0,0,0}, c);
-            break;
         case OBJ_TORUS:
         case OBJ_KNOT:
         case OBJ_POLY:
             draw_model_object(obj, mode, c, shader);
+            rlPopMatrix();
+            return;
+        default:
             break;
+    }
+
+    switch (obj->type) {
         case OBJ_CAPSULE:
             if (mode == DRAW_SOLID)
                 DrawCapsule(Vector3{0, -obj->capsuleHeight * 0.5f, 0},
@@ -854,6 +856,13 @@ int scene_add_model(Scene *s, const char *filePath) {
     platform_chdir(savedCwd);
 
     obj->modelLoaded = (obj->model.meshCount > 0);
+    if (obj->modelLoaded) {
+        for (int i = 0; i < obj->model.meshCount; i++) {
+            if (!obj->model.meshes[i].texcoords) {
+                gen_spherical_uvs(&obj->model.meshes[i]);
+            }
+        }
+    }
     printf("[MODEL] meshes=%d, materials=%d, loaded=%d\n",
            obj->model.meshCount, obj->model.materialCount, obj->modelLoaded);
 
