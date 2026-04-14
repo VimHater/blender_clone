@@ -70,9 +70,12 @@ void editor_init(Editor *ed, int screenW, int screenH) {
     fontCfg.OversampleV = 2;
     fontCfg.PixelSnapH = true;
     fontCfg.GlyphRanges = get_glyph_ranges();
-    float initSize = BASE_FONT_SIZE * ((float)screenH / 1080.0f) * ed->ui.uiScale;
+    // use actual screen height (may differ from requested due to DPI scaling)
+    float actualH = (float)GetScreenHeight();
+    float initSize = BASE_FONT_SIZE * (actualH / 1080.0f) * ed->ui.uiScale;
+    if (initSize < 10.0f) initSize = 10.0f;
     io.Fonts->AddFontFromFileTTF(ed->ui.fontPath, initSize, &fontCfg);
-    io.FontGlobalScale = 1.0f;
+    io.FontGlobalScale = GLOBAL_FONT_SCALE;
     ed->ui.lastFontSize = initSize;
     rlImGuiEndInitImGui();
 
