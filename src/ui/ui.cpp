@@ -278,7 +278,8 @@ void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui) {
         ImGui::SameLine();
         // maximize/restore
         bool maximized = IsWindowMaximized();
-        if (glowButton("##max", maximized ? "\xe2\x8a\xa1" : "\xe2\x96\xa1",
+        // if (glowButton("##max", maximized ? "\xe2\x8a\xa1" : "\xe2\x96\xa1",
+        if (glowButton("##max", "\xe2\x96\xa1",
                         ImVec2(buttonW, btnH), dimCol, glowCol, pressCol)) {
             if (maximized) RestoreWindow();
             else MaximizeWindow();
