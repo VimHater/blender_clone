@@ -9,13 +9,17 @@
 static const float BASE_FONT_SIZE = 36.0f;
 static const float REFERENCE_HEIGHT = 1080.0f;
 
-// compute UI scale factor based on monitor resolution
+// compute UI scale factor based on monitor resolution, accounting for OS DPI scaling
 // 1080p -> 1.0, 1440p -> 1.33, 4K -> 2.0, etc.
+// On Windows with e.g. 150% scaling, GetMonitorHeight returns physical pixels
+// but the window operates in logical pixels, so we divide by the DPI factor.
 static float compute_display_scale() {
     int monitor = GetCurrentMonitor();
     float monH = (float)GetMonitorHeight(monitor);
-    if (monH < 100.0f) monH = REFERENCE_HEIGHT; // fallback
-    return monH / REFERENCE_HEIGHT;
+    if (monH < 100.0f) monH = REFERENCE_HEIGHT;
+    Vector2 dpiScale = GetWindowScaleDPI();
+    float dpi = (dpiScale.y > 0.1f) ? dpiScale.y : 1.0f;
+    return monH / (REFERENCE_HEIGHT * dpi);
 }
 
 // custom glyph ranges: default + symbols used by window controls
@@ -197,10 +201,7 @@ bool editor_should_close(const Editor *ed) {
 
 void editor_update(Editor *ed) {
     // font scaling — rebuild atlas when target pixel size changes
-    int mon = GetCurrentMonitor();
-    float monH = (float)GetMonitorHeight(mon);
-    if (monH < 100.0f) monH = REFERENCE_HEIGHT;
-    float targetFontSize = BASE_FONT_SIZE * (monH / REFERENCE_HEIGHT) * ed->ui.uiScale;
+    float targetFontSize = BASE_FONT_SIZE * compute_display_scale() * ed->ui.uiScale;
     if (targetFontSize < 10.0f) targetFontSize = 10.0f;
     // only rebuild if size changed by more than 1px (avoid constant rebuilds during resize)
     if (fabsf(targetFontSize - ed->ui.lastFontSize) > 1.0f) {
