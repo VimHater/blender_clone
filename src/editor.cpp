@@ -224,7 +224,6 @@ void editor_update(Editor *ed) {
         if (IsKeyPressed(KEY_T)) ed->ui.transformMode = TMODE_TRANSLATE;
         if (IsKeyPressed(KEY_R)) ed->ui.transformMode = TMODE_ROTATE;
         if (IsKeyPressed(KEY_Y)) ed->ui.transformMode = TMODE_SCALE;
-        if (IsKeyDown(KEY_LEFT_SHIFT) && IsKeyPressed(KEY_S)) ed->ui.transformMode = TMODE_SCALE;
     }
 
     // placement mode: map mouse to ground plane y=0

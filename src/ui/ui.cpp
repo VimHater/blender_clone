@@ -171,7 +171,7 @@ void ui_shortcut_popup() {
         ImGui::Text("Transform");
         ImGui::BulletText("T         Translate mode");
         ImGui::BulletText("R         Rotate mode");
-        ImGui::BulletText("Y/Shift+S Scale mode");
+        ImGui::BulletText("Y         Scale mode");
         ImGui::BulletText("Drag axis Gizmo transform");
 
         ImGui::Separator();
@@ -285,7 +285,7 @@ void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui) {
         }
         ImGui::SameLine();
         // close — glows red
-        if (glowButton("##close", "\xe2\x9c\x95", ImVec2(buttonW, btnH), dimCol, redGlow, redPress)) {
+        if (glowButton("##close", "\xe2\x9c\x95 ", ImVec2(buttonW, btnH), dimCol, redGlow, redPress)) {
             ui->wantClose = true;
         }
 
