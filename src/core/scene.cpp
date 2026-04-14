@@ -818,10 +818,9 @@ Model load_model_from_obj_data(const char *objData) {
     // write to a unique temp file, load, delete
     char tmpPath[256];
 #ifdef _WIN32
-    // Windows: _mktemp_s generates unique name, then we append .obj
-    char tmpBase[256];
-    snprintf(tmpBase, sizeof(tmpBase), "%s\\blender_clone_XXXXXX", getenv("TEMP") ? getenv("TEMP") : ".");
-    _mktemp_s(tmpBase, strlen(tmpBase) + 1);
+    // Windows: tmpnam_s + .obj suffix
+    char tmpBase[L_tmpnam_s];
+    tmpnam_s(tmpBase, sizeof(tmpBase));
     snprintf(tmpPath, sizeof(tmpPath), "%s.obj", tmpBase);
 #else
     // POSIX: mkstemps creates file with .obj suffix
