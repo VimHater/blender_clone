@@ -39,7 +39,7 @@ static void rebuild_font(EditorUI *ui, float fontSize) {
 void editor_init(Editor *ed, int screenW, int screenH) {
     // window
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_UNDECORATED);
-    InitWindow(screenW, screenH, "Deeznut");
+    InitWindow(screenW, screenH, "btw");
     SetTargetFPS(60);
     SetExitKey(KEY_NULL); // disable ESC to quit
 
