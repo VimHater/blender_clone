@@ -190,7 +190,9 @@ void editor_update(Editor *ed) {
     // font scaling — rebuild atlas when target pixel size changes
     float screenH = (float)GetScreenHeight();
     if (screenH < 100.0f) screenH = REFERENCE_HEIGHT;
-    float targetFontSize = BASE_FONT_SIZE * (screenH / REFERENCE_HEIGHT) * ed->ui.uiScale;
+    Vector2 dpiScale = GetWindowScaleDPI();
+    float dpi = (dpiScale.y > 0.5f) ? dpiScale.y : 1.0f;
+    float targetFontSize = BASE_FONT_SIZE * (screenH / REFERENCE_HEIGHT) * ed->ui.uiScale / dpi;
     if (targetFontSize < 10.0f) targetFontSize = 10.0f;
     // only rebuild if size changed by more than 1px (avoid constant rebuilds during resize)
     if (fabsf(targetFontSize - ed->ui.lastFontSize) > 1.0f) {
