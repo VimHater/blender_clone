@@ -171,7 +171,7 @@ void ui_shortcut_popup() {
         ImGui::Text("Transform");
         ImGui::BulletText("T         Translate mode");
         ImGui::BulletText("R         Rotate mode");
-        ImGui::BulletText("Y         Scale mode");
+        ImGui::BulletText("Y/Shift+S Scale mode");
         ImGui::BulletText("Drag axis Gizmo transform");
 
         ImGui::Separator();
