@@ -6,7 +6,11 @@
 #include <cstdio>
 #include <cmath>
 
+#ifdef _WIN32
+static const float BASE_FONT_SIZE = 18.0f;
+#else
 static const float BASE_FONT_SIZE = 36.0f;
+#endif
 static const float REFERENCE_HEIGHT = 1080.0f;
 
 // custom glyph ranges: default + symbols used by window controls
