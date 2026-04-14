@@ -432,17 +432,56 @@ static void draw_object(const SceneObject *obj, DrawMode mode, Shader *shader) {
             break;
         }
         case OBJ_LIGHT: {
-            // draw light gizmo: small sphere with rays
             Color lc = obj->lightColor;
-            DrawSphereWires(Vector3{0,0,0}, 0.15f, 8, 8, lc);
-            float r = 0.5f;
-            DrawLine3D(Vector3{-r,0,0}, Vector3{r,0,0}, lc);
-            DrawLine3D(Vector3{0,-r,0}, Vector3{0,r,0}, lc);
-            DrawLine3D(Vector3{0,0,-r}, Vector3{0,0,r}, lc);
-            // diagonal rays
-            float d = r * 0.7f;
-            DrawLine3D(Vector3{-d,-d,0}, Vector3{d,d,0}, lc);
-            DrawLine3D(Vector3{-d,d,0}, Vector3{d,-d,0}, lc);
+            if (obj->lightType == LIGHT_POINT) {
+                // point light: radial sun gizmo
+                DrawSphereWires(Vector3{0,0,0}, 0.15f, 8, 8, lc);
+                float r = 0.5f;
+                DrawLine3D(Vector3{-r,0,0}, Vector3{r,0,0}, lc);
+                DrawLine3D(Vector3{0,-r,0}, Vector3{0,r,0}, lc);
+                DrawLine3D(Vector3{0,0,-r}, Vector3{0,0,r}, lc);
+                float d = r * 0.7f;
+                DrawLine3D(Vector3{-d,-d,0}, Vector3{d,d,0}, lc);
+                DrawLine3D(Vector3{-d,d,0}, Vector3{d,-d,0}, lc);
+            } else {
+                // directional light: parallel arrows showing light direction
+                // direction is computed from rotation (same as lighting_collect)
+                Vector3 rot = obj->transform.rotation;
+                Matrix rotMat = MatrixRotateXYZ(Vector3{
+                    rot.x * DEG2RAD, rot.y * DEG2RAD, rot.z * DEG2RAD});
+                Vector3 dir = Vector3Transform(Vector3{0, -1, 0}, rotMat);
+
+                // draw a circle base + parallel arrows
+                float spacing = 0.3f;
+                float arrowLen = 1.0f;
+                float tipLen = 0.15f;
+
+                // perpendicular axes to dir
+                Vector3 up = (fabsf(dir.y) < 0.99f) ? Vector3{0,1,0} : Vector3{1,0,0};
+                Vector3 right = Vector3Normalize(Vector3CrossProduct(dir, up));
+                Vector3 forward = Vector3Normalize(Vector3CrossProduct(right, dir));
+
+                // draw grid of parallel arrows (3x3)
+                for (int ix = -1; ix <= 1; ix++) {
+                    for (int iz = -1; iz <= 1; iz++) {
+                        Vector3 offset = Vector3Add(
+                            Vector3Scale(right, ix * spacing),
+                            Vector3Scale(forward, iz * spacing));
+                        Vector3 start = offset;
+                        Vector3 end = Vector3Add(start, Vector3Scale(dir, arrowLen));
+                        DrawLine3D(start, end, lc);
+                        // arrowhead: two small lines
+                        Vector3 tip1 = Vector3Add(end, Vector3Scale(dir, -tipLen));
+                        tip1 = Vector3Add(tip1, Vector3Scale(right, tipLen * 0.5f));
+                        Vector3 tip2 = Vector3Add(end, Vector3Scale(dir, -tipLen));
+                        tip2 = Vector3Add(tip2, Vector3Scale(right, -tipLen * 0.5f));
+                        DrawLine3D(end, tip1, lc);
+                        DrawLine3D(end, tip2, lc);
+                    }
+                }
+                // small circle at center to mark the object
+                DrawCircle3D(Vector3{0,0,0}, 0.12f, right, 90.0f, lc);
+            }
             break;
         }
         default:

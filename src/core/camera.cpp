@@ -35,9 +35,12 @@ void editor_camera_sync(EditorCamera *ec) {
 void editor_camera_update(EditorCamera *ec, bool inputAllowed) {
     if (!inputAllowed) return;
 
-    if (IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)) {
+    // orbit/pan: middle mouse or hold G + mouse move
+    bool orbiting = IsMouseButtonDown(MOUSE_BUTTON_MIDDLE) || IsKeyDown(KEY_G);
+    if (orbiting) {
         Vector2 delta = GetMouseDelta();
-        if (IsKeyDown(KEY_LEFT_SHIFT)) {
+        bool panModifier = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+        if (panModifier) {
             Vector3 forward = Vector3Normalize(Vector3Subtract(ec->cam.target, ec->cam.position));
             Vector3 right = Vector3Normalize(Vector3CrossProduct(forward, ec->cam.up));
             Vector3 up = Vector3CrossProduct(right, forward);

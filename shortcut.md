@@ -11,7 +11,9 @@
 | Space | Move camera up |
 | Shift | Move camera down |
 | Middle mouse drag | Orbit camera |
+| Hold G + mouse move | Orbit camera |
 | Shift + Middle mouse drag | Pan camera |
+| Hold G + Ctrl + mouse move | Pan camera |
 | Scroll wheel | Zoom in/out |
 
 ## Selection
