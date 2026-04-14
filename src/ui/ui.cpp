@@ -285,7 +285,7 @@ void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui) {
         }
         ImGui::SameLine();
         // close — glows red
-        if (glowButton("##close", "\xe2\x9c\x95 ", ImVec2(buttonW, btnH), dimCol, redGlow, redPress)) {
+        if (glowButton("##close ", "\xe2\x9c\x95 ", ImVec2(buttonW, btnH), dimCol, redGlow, redPress)) {
             ui->wantClose = true;
         }
 
