@@ -76,7 +76,7 @@ void editor_init(Editor *ed, int screenW, int screenH) {
     if (initSize < 10.0f) initSize = 10.0f;
     io.Fonts->AddFontFromFileTTF(ed->ui.fontPath, initSize, &fontCfg);
     io.FontGlobalScale = GLOBAL_FONT_SCALE;
-    ed->ui.lastFontSize = initSize;
+    ed->ui.lastFontSize = 0.0f; // force rebuild on first frame (window size may not be final yet)
     rlImGuiEndInitImGui();
 
     // editor theme — base background #181818
