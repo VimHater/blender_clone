@@ -816,9 +816,19 @@ int scene_get_children(const Scene *s, int parentIndex, int *outChildren, int ma
 
 Model load_model_from_obj_data(const char *objData) {
     // write to a unique temp file, load, delete
-    char tmpPath[L_tmpnam + 8];
-    tmpnam(tmpPath);
-    strncat(tmpPath, ".obj", sizeof(tmpPath) - strlen(tmpPath) - 1);
+    char tmpPath[256];
+#ifdef _WIN32
+    // Windows: _mktemp_s generates unique name, then we append .obj
+    char tmpBase[256];
+    snprintf(tmpBase, sizeof(tmpBase), "%s\\blender_clone_XXXXXX", getenv("TEMP") ? getenv("TEMP") : ".");
+    _mktemp_s(tmpBase, strlen(tmpBase) + 1);
+    snprintf(tmpPath, sizeof(tmpPath), "%s.obj", tmpBase);
+#else
+    // POSIX: mkstemps creates file with .obj suffix
+    snprintf(tmpPath, sizeof(tmpPath), "/tmp/blender_clone_XXXXXX.obj");
+    int fd = mkstemps(tmpPath, 4);
+    if (fd >= 0) { close(fd); }
+#endif
 
     FILE *f = fopen(tmpPath, "w");
     if (f) {

@@ -9,6 +9,19 @@
 static const float BASE_FONT_SIZE = 36.0f;
 static const float GLOBAL_FONT_SCALE = 2.0f;
 
+// custom glyph ranges: default + symbols used by window controls
+static const ImWchar* get_glyph_ranges() {
+    static const ImWchar ranges[] = {
+        0x0020, 0x00FF, // Basic Latin + Latin Supplement
+        0x2010, 0x2027, // General Punctuation (em dash U+2014)
+        0x2500, 0x25FF, // Box Drawing + Geometric Shapes (U+25A1 white square)
+        0x2700, 0x27BF, // Dingbats (U+2715 multiplication X)
+        0x2290, 0x22A5, // Math operators (U+22A1 squared dot for restore)
+        0, // terminator
+    };
+    return ranges;
+}
+
 static void rebuild_font(EditorUI *ui, float fontSize) {
     ImGuiIO &io = ImGui::GetIO();
     io.Fonts->Clear();
@@ -16,6 +29,7 @@ static void rebuild_font(EditorUI *ui, float fontSize) {
     fontCfg.OversampleH = 2;
     fontCfg.OversampleV = 2;
     fontCfg.PixelSnapH = true;
+    fontCfg.GlyphRanges = get_glyph_ranges();
     io.Fonts->AddFontFromFileTTF(ui->fontPath, fontSize, &fontCfg);
     io.Fonts->Build();
     io.FontGlobalScale = GLOBAL_FONT_SCALE;
@@ -24,9 +38,10 @@ static void rebuild_font(EditorUI *ui, float fontSize) {
 
 void editor_init(Editor *ed, int screenW, int screenH) {
     // window
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    InitWindow(screenW, screenH, "Blender Clone");
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_UNDECORATED);
+    InitWindow(screenW, screenH, "Deeznut");
     SetTargetFPS(60);
+    SetExitKey(KEY_NULL); // disable ESC to quit
 
     // core systems (init ui early so fontPath is available)
     scene_init(&ed->scene);
@@ -38,7 +53,7 @@ void editor_init(Editor *ed, int screenW, int screenH) {
     // store font path — try ../font/ first (build/), then ../../font/ (build/Debug/)
     {
         const char *appDir = GetApplicationDirectory();
-        const char *fontName = "JetBrainsMonoNerdFont-Medium.ttf";
+        const char *fontName = "ZedMonoNerdFontMono-Medium.ttf";
         snprintf(ed->ui.fontPath, sizeof(ed->ui.fontPath), "%s../font/%s", appDir, fontName);
         if (!FileExists(ed->ui.fontPath)) {
             snprintf(ed->ui.fontPath, sizeof(ed->ui.fontPath), "%s../../font/%s", appDir, fontName);
@@ -54,11 +69,110 @@ void editor_init(Editor *ed, int screenW, int screenH) {
     fontCfg.OversampleH = 2;
     fontCfg.OversampleV = 2;
     fontCfg.PixelSnapH = true;
+    fontCfg.GlyphRanges = get_glyph_ranges();
     float initSize = BASE_FONT_SIZE * ((float)screenH / 1080.0f) * ed->ui.uiScale;
     io.Fonts->AddFontFromFileTTF(ed->ui.fontPath, initSize, &fontCfg);
     io.FontGlobalScale = 1.0f;
     ed->ui.lastFontSize = initSize;
     rlImGuiEndInitImGui();
+
+    // editor theme — base background #181818
+    {
+        ImGuiStyle &st = ImGui::GetStyle();
+        st.WindowRounding    = 2.0f;
+        st.FrameRounding     = 2.0f;
+        st.GrabRounding      = 2.0f;
+        st.TabRounding       = 2.0f;
+        st.ScrollbarRounding = 2.0f;
+        st.WindowBorderSize  = 1.0f;
+        st.FrameBorderSize   = 0.0f;
+        st.PopupBorderSize   = 1.0f;
+        st.WindowPadding     = ImVec2(8, 8);
+        st.FramePadding      = ImVec2(6, 4);
+        st.ItemSpacing       = ImVec2(8, 6);
+
+        ImVec4 *c = st.Colors;
+
+        // Monokai Pro (Filter Machine) palette on #181818 base
+        // text:    #d4d4d4  -> 0.831, 0.831, 0.831
+        // muted:   #727072  -> 0.447, 0.439, 0.447
+        // border:  #2d2d2d  -> 0.176
+        // raised:  #1d1d1d  -> 0.114
+        // input:   #141414  -> 0.078
+        // select:  #363636  -> 0.212
+        // accent:  #fc9867  orange -> 0.988, 0.596, 0.404
+        // green:   #a9dc76  -> 0.663, 0.863, 0.463
+        // blue:    #78dce8  -> 0.471, 0.863, 0.910
+        // yellow:  #ffd866  -> 1.0, 0.847, 0.400
+
+        // backgrounds
+        c[ImGuiCol_WindowBg]             = ImVec4(0.094f, 0.094f, 0.094f, 1.0f); // #181818
+        c[ImGuiCol_ChildBg]              = ImVec4(0.094f, 0.094f, 0.094f, 1.0f);
+        c[ImGuiCol_PopupBg]              = ImVec4(0.114f, 0.114f, 0.114f, 0.98f); // #1d1d1d
+        c[ImGuiCol_MenuBarBg]            = ImVec4(0.094f, 0.094f, 0.094f, 1.0f);
+
+        // borders — neutral gray
+        c[ImGuiCol_Border]               = ImVec4(0.176f, 0.176f, 0.176f, 0.6f); // #2d2d2d
+        c[ImGuiCol_BorderShadow]         = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+
+        // text
+        c[ImGuiCol_Text]                 = ImVec4(0.831f, 0.831f, 0.831f, 1.0f); // #d4d4d4
+        c[ImGuiCol_TextDisabled]         = ImVec4(0.447f, 0.439f, 0.447f, 1.0f); // #727072
+
+        // frames (inputs, sliders, combos)
+        c[ImGuiCol_FrameBg]              = ImVec4(0.078f, 0.078f, 0.078f, 1.0f); // #141414
+        c[ImGuiCol_FrameBgHovered]       = ImVec4(0.133f, 0.133f, 0.133f, 1.0f); // #222222
+        c[ImGuiCol_FrameBgActive]        = ImVec4(0.176f, 0.176f, 0.176f, 1.0f); // #2d2d2d
+
+        // title bar
+        c[ImGuiCol_TitleBg]              = ImVec4(0.075f, 0.075f, 0.075f, 1.0f); // #131313
+        c[ImGuiCol_TitleBgActive]        = ImVec4(0.094f, 0.094f, 0.094f, 1.0f); // #181818
+        c[ImGuiCol_TitleBgCollapsed]     = ImVec4(0.059f, 0.059f, 0.059f, 1.0f); // #0f0f0f
+
+        // tabs
+        c[ImGuiCol_Tab]                  = ImVec4(0.102f, 0.102f, 0.102f, 1.0f); // #1a1a1a
+        c[ImGuiCol_TabHovered]           = ImVec4(0.176f, 0.176f, 0.176f, 1.0f); // #2d2d2d
+        c[ImGuiCol_TabSelected]          = ImVec4(0.133f, 0.133f, 0.133f, 1.0f); // #222222
+        c[ImGuiCol_TabSelectedOverline]  = ImVec4(0.988f, 0.596f, 0.404f, 0.8f); // #fc9867 orange
+        c[ImGuiCol_TabDimmed]            = ImVec4(0.075f, 0.075f, 0.075f, 1.0f);
+        c[ImGuiCol_TabDimmedSelected]    = ImVec4(0.102f, 0.102f, 0.102f, 1.0f);
+        c[ImGuiCol_TabDimmedSelectedOverline] = ImVec4(0.447f, 0.439f, 0.447f, 0.5f);
+
+        // headers — neutral with orange active
+        c[ImGuiCol_Header]              = ImVec4(0.176f, 0.176f, 0.176f, 0.6f);  // #2d2d2d
+        c[ImGuiCol_HeaderHovered]       = ImVec4(0.220f, 0.220f, 0.220f, 0.8f);  // #383838
+        c[ImGuiCol_HeaderActive]        = ImVec4(0.988f, 0.596f, 0.404f, 0.35f); // #fc9867
+
+        // buttons
+        c[ImGuiCol_Button]              = ImVec4(0.176f, 0.176f, 0.176f, 1.0f);  // #2d2d2d
+        c[ImGuiCol_ButtonHovered]       = ImVec4(0.220f, 0.220f, 0.220f, 1.0f);  // #383838
+        c[ImGuiCol_ButtonActive]        = ImVec4(0.988f, 0.596f, 0.404f, 0.6f);  // #fc9867
+
+        // checkmarks, sliders — orange accent
+        c[ImGuiCol_CheckMark]           = ImVec4(0.988f, 0.596f, 0.404f, 1.0f);  // #fc9867
+        c[ImGuiCol_SliderGrab]          = ImVec4(0.988f, 0.596f, 0.404f, 0.7f);
+        c[ImGuiCol_SliderGrabActive]    = ImVec4(0.988f, 0.596f, 0.404f, 1.0f);
+
+        // scrollbar
+        c[ImGuiCol_ScrollbarBg]         = ImVec4(0.075f, 0.075f, 0.075f, 0.6f);
+        c[ImGuiCol_ScrollbarGrab]       = ImVec4(0.212f, 0.212f, 0.212f, 1.0f);  // #363636
+        c[ImGuiCol_ScrollbarGrabHovered]= ImVec4(0.28f, 0.28f, 0.28f, 1.0f);
+        c[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.35f, 0.35f, 0.35f, 1.0f);
+
+        // separators
+        c[ImGuiCol_Separator]           = ImVec4(0.176f, 0.176f, 0.176f, 0.6f);
+        c[ImGuiCol_SeparatorHovered]    = ImVec4(0.988f, 0.596f, 0.404f, 0.6f);
+        c[ImGuiCol_SeparatorActive]     = ImVec4(0.988f, 0.596f, 0.404f, 1.0f);
+
+        // resize grip
+        c[ImGuiCol_ResizeGrip]          = ImVec4(0.176f, 0.176f, 0.176f, 0.4f);
+        c[ImGuiCol_ResizeGripHovered]   = ImVec4(0.988f, 0.596f, 0.404f, 0.5f);
+        c[ImGuiCol_ResizeGripActive]    = ImVec4(0.988f, 0.596f, 0.404f, 0.9f);
+
+        // docking
+        c[ImGuiCol_DockingPreview]      = ImVec4(0.988f, 0.596f, 0.404f, 0.5f);
+        c[ImGuiCol_DockingEmptyBg]      = ImVec4(0.075f, 0.075f, 0.075f, 1.0f);
+    }
 
     lighting_init(&ed->lighting);
 
@@ -66,7 +180,7 @@ void editor_init(Editor *ed, int screenW, int screenH) {
 }
 
 bool editor_should_close(const Editor *ed) {
-    return !ed->running || WindowShouldClose();
+    return !ed->running || ed->ui.wantClose || WindowShouldClose();
 }
 
 void editor_update(Editor *ed) {
@@ -379,7 +493,7 @@ void editor_draw(Editor *ed) {
 
     // UI
     BeginDrawing();
-        ClearBackground(Color{30, 30, 30, 255});
+        ClearBackground(Color{24, 24, 24, 255});
         rlImGuiBegin();
             ui_menu_bar(&ed->scene, &ed->camera, &ed->timeline, &ed->ui);
             ui_dockspace(&ed->ui);

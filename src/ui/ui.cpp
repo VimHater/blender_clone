@@ -32,6 +32,9 @@ void ui_init(EditorUI *ui, int vpW, int vpH) {
     ui->showCamera = true;
     ui->dockspaceInitialized = false;
     ui->activeCameraId = 0;
+    ui->titleBarDragging = false;
+    ui->titleBarDragOffset = {0, 0};
+    ui->wantClose = false;
     ui->showErrorPopup = false;
     ui->errorMessage[0] = '\0';
     ui->gizmoActiveAxis = GIZMO_NONE;
@@ -55,15 +58,18 @@ void ui_shutdown(EditorUI *ui) {
 
 void ui_dockspace(EditorUI *ui) {
     ImGuiViewport *vp = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(vp->WorkPos);
-    ImGui::SetNextWindowSize(vp->WorkSize);
+    float titleBarHeight = ImGui::GetFrameHeight() * 1.4f;
+    ImVec2 dockPos(vp->Pos.x, vp->Pos.y + titleBarHeight);
+    ImVec2 dockSize(vp->Size.x, vp->Size.y - titleBarHeight);
+    ImGui::SetNextWindowPos(dockPos);
+    ImGui::SetNextWindowSize(dockSize);
     ImGui::SetNextWindowViewport(vp->ID);
 
     ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar |
         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
         ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus |
-        ImGuiWindowFlags_NoNavFocus | ImGuiWindowFlags_MenuBar;
+        ImGuiWindowFlags_NoNavFocus;
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
@@ -180,10 +186,37 @@ void ui_shortcut_popup() {
 
 void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui) {
     (void)ec; (void)tl;
-    if (ImGui::BeginMainMenuBar()) {
+
+    float titleBarHeight = ImGui::GetFrameHeight() * 1.4f;
+    float buttonW = titleBarHeight * 1.5f;
+
+    ImGuiViewport *vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(vp->Pos);
+    ImGui::SetNextWindowSize(ImVec2(vp->Size.x, titleBarHeight));
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(4, 2));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.075f, 0.075f, 0.075f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_MenuBarBg, ImVec4(0.075f, 0.075f, 0.075f, 1.0f));
+
+    ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
+        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoScrollbar |
+        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_MenuBar;
+
+    ImGui::Begin("##TitleBar", nullptr, flags);
+
+    // --- Menu bar inside the title bar window ---
+    if (ImGui::BeginMenuBar()) {
+        // app title
+        ImGui::TextColored(ImVec4(0.6f, 0.75f, 1.0f, 1.0f), "btw");
+        ImGui::Separator();
+
         if (ImGui::BeginMenu("File")) {
             if (ImGui::MenuItem("Exit")) {
-                CloseWindow();
+                ui->wantClose = true;
             }
             ImGui::EndMenu();
         }
@@ -202,13 +235,101 @@ void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui) {
             }
             ImGui::EndMenu();
         }
-        // right-aligned shortcut hint
-        float hint_w = ImGui::CalcTextSize("/ Shortcuts").x + ImGui::GetStyle().ItemSpacing.x * 2;
-        ImGui::SameLine(ImGui::GetWindowWidth() - hint_w);
+
+        // right side: shortcut hint + window buttons flush to edge
+        float buttonsW = buttonW * 3; // no spacing between buttons
+        float hintW = ImGui::CalcTextSize("/ Shortcuts").x;
+        float rightContentW = hintW + ImGui::GetStyle().ItemSpacing.x + buttonsW;
+        ImGui::SameLine(ImGui::GetWindowWidth() - rightContentW);
         ImGui::TextDisabled("/ Shortcuts");
 
-        ImGui::EndMainMenuBar();
+        // window control buttons — flush to right edge, no background, glow on hover
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
+
+        ImGui::SameLine(ImGui::GetWindowWidth() - buttonsW);
+
+        ImU32 dimCol   = IM_COL32(114, 112, 114, 255); // #727072
+        ImU32 glowCol  = IM_COL32(242, 242, 242, 255); // bright white
+        ImU32 pressCol = IM_COL32(180, 180, 180, 255);
+        ImU32 redGlow  = IM_COL32(255, 85, 85, 255);   // #ff5555
+        ImU32 redPress = IM_COL32(204, 51, 51, 255);
+
+        // helper: invisible button with centered colored text
+        auto glowButton = [&](const char *id, const char *icon, ImVec2 size,
+                              ImU32 normal, ImU32 hover, ImU32 active) -> bool {
+            ImVec2 pos = ImGui::GetCursorScreenPos();
+            bool clicked = ImGui::InvisibleButton(id, size);
+            bool hovered = ImGui::IsItemHovered();
+            bool held = ImGui::IsItemActive();
+            ImU32 col = held ? active : (hovered ? hover : normal);
+            ImVec2 textSize = ImGui::CalcTextSize(icon);
+            ImVec2 textPos(pos.x + (size.x - textSize.x) * 0.5f,
+                           pos.y + (size.y - textSize.y) * 0.5f);
+            ImGui::GetWindowDrawList()->AddText(textPos, col, icon);
+            return clicked;
+        };
+
+        float btnH = ImGui::GetFrameHeight();
+
+        // minimize
+        if (glowButton("##min", "\xe2\x80\x94", ImVec2(buttonW, btnH), dimCol, glowCol, pressCol)) {
+            MinimizeWindow();
+        }
+        ImGui::SameLine();
+        // maximize/restore
+        bool maximized = IsWindowMaximized();
+        if (glowButton("##max", maximized ? "\xe2\x8a\xa1" : "\xe2\x96\xa1",
+                        ImVec2(buttonW, btnH), dimCol, glowCol, pressCol)) {
+            if (maximized) RestoreWindow();
+            else MaximizeWindow();
+        }
+        ImGui::SameLine();
+        // close — glows red
+        if (glowButton("##close", "\xe2\x9c\x95", ImVec2(buttonW, btnH), dimCol, redGlow, redPress)) {
+            ui->wantClose = true;
+        }
+
+        ImGui::PopStyleVar(); // item spacing
+
+        ImGui::EndMenuBar();
     }
+
+    // --- Draggable area: anywhere on the title bar that isn't a widget ---
+    // Check if mouse is in the title bar area and not over any imgui item
+    ImVec2 mousePos = ImGui::GetIO().MousePos;
+    bool mouseInTitleBar = mousePos.y >= vp->Pos.y && mousePos.y < vp->Pos.y + titleBarHeight
+                        && mousePos.x >= vp->Pos.x && mousePos.x < vp->Pos.x + vp->Size.x - buttonW * 3;
+
+    if (mouseInTitleBar && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::IsAnyItemHovered()) {
+        ui->titleBarDragging = true;
+        Vector2 mouse = GetMousePosition(); // window-local
+        ui->titleBarDragOffset = mouse;
+        // un-maximize on drag start so the window detaches
+        if (IsWindowMaximized()) {
+            RestoreWindow();
+        }
+    }
+    if (ui->titleBarDragging) {
+        if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            Vector2 mouse = GetMousePosition(); // window-local
+            Vector2 winPos = GetWindowPosition();
+            SetWindowPosition(
+                (int)(winPos.x + mouse.x - ui->titleBarDragOffset.x),
+                (int)(winPos.y + mouse.y - ui->titleBarDragOffset.y));
+        } else {
+            ui->titleBarDragging = false;
+        }
+    }
+
+    // double-click title bar to maximize/restore
+    if (mouseInTitleBar && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !ImGui::IsAnyItemHovered()) {
+        if (IsWindowMaximized()) RestoreWindow();
+        else MaximizeWindow();
+    }
+
+    ImGui::End();
+    ImGui::PopStyleColor(2);
+    ImGui::PopStyleVar(3);
 }
 
 // ---- Viewport ----

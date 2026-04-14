@@ -43,6 +43,11 @@ struct EditorUI {
     Vector2 gizmoDragStart;         // screen mouse pos at drag start
     Vector3 gizmoDragObjStart;      // object position/rotation/scale at drag start
 
+    // title bar dragging
+    bool titleBarDragging;
+    Vector2 titleBarDragOffset;
+    bool wantClose;  // set by title bar close button
+
     // error popup
     bool showErrorPopup;
     char errorMessage[256];
