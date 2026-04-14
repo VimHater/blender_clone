@@ -7,7 +7,12 @@
 #include <cmath>
 
 static const float BASE_FONT_SIZE = 36.0f;
+#ifdef _WIN32
+static const float GLOBAL_FONT_SCALE = 0.6f;
+
+#else
 static const float GLOBAL_FONT_SCALE = 0.8f;
+#endif // _WIN32
 
 // custom glyph ranges: default + symbols used by window controls
 static const ImWchar* get_glyph_ranges() {
