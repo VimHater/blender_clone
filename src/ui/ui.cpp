@@ -188,7 +188,7 @@ void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui) {
     (void)ec; (void)tl;
 
     float titleBarHeight = ImGui::GetFrameHeight() * 1.4f;
-    float buttonW = titleBarHeight * 1.5f;
+    float buttonW = titleBarHeight * 0.9f;
 
     ImGuiViewport *vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->Pos);
