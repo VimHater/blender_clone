@@ -8,7 +8,7 @@
 
 static const float BASE_FONT_SIZE = 36.0f;
 #ifdef _WIN32
-static const float GLOBAL_FONT_SCALE = 0.6f;
+static const float GLOBAL_FONT_SCALE = 0.5f;
 
 #else
 static const float GLOBAL_FONT_SCALE = 0.8f;
