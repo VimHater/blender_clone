@@ -14,7 +14,20 @@ file(GLOB SOURCES
     "imgui/*.cpp"
 )
 
+# Lua library (compiled as C)
+file(GLOB LUA_SOURCES "lua-5.5.0/src/*.c")
+list(REMOVE_ITEM LUA_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/lua-5.5.0/src/lua.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/lua-5.5.0/src/luac.c"
+)
+add_library(lua STATIC ${LUA_SOURCES})
+target_include_directories(lua PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/lua-5.5.0/src")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_libraries(lua PRIVATE m)
+endif()
+
 add_executable(melder ${SOURCES})
+target_link_libraries(melder PRIVATE lua)
 
 target_include_directories(melder PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_include_directories(melder PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
