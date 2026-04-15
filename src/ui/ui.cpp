@@ -461,10 +461,10 @@ void ui_viewport(EditorUI *ui) {
     ImGui::Begin("Viewport");
 
     // tabs: Edit and Animation
-    ImGui::PushStyleColor(ImGuiCol_Tab,                ImVec4(0.22f, 0.22f, 0.22f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_TabHovered,         ImVec4(0.45f, 0.45f, 0.50f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_TabSelected,        ImVec4(0.35f, 0.38f, 0.48f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_TabSelectedOverline,ImVec4(0.50f, 0.55f, 0.75f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Tab,                ImVec4(0.25f, 0.20f, 0.15f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_TabHovered,         ImVec4(0.55f, 0.40f, 0.20f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_TabSelected,        ImVec4(0.45f, 0.32f, 0.15f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_TabSelectedOverline,ImVec4(0.80f, 0.55f, 0.20f, 1.0f));
     if (ImGui::BeginTabBar("##ViewportTabs")) {
         ImGuiTabItemFlags editFlags = (ui->activeViewportTab == 0 && !ui->playMode) ? 0 : 0;
         ImGuiTabItemFlags animFlags = 0;
