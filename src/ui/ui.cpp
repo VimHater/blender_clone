@@ -4,6 +4,12 @@
 #include <imgui_internal.h>
 #include <cstdio>
 #include <cstdint>
+#include <cstring>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <dirent.h>
+#endif
 #include "builtin_textures/checkerboard.texture_array"
 #include "builtin_textures/brick.texture_array"
 #include "builtin_textures/sand.texture_array"
@@ -16,7 +22,11 @@
 void ui_init(EditorUI *ui, int vpW, int vpH) {
     ui->viewportW = vpW;
     ui->viewportH = vpH;
-    ui->viewportRT = LoadRenderTexture(vpW, vpH);
+    ui->viewportRT = LoadRenderTexture(vpW * 2, vpH * 2);
+    ui->animViewportRT = LoadRenderTexture(vpW * 2, vpH * 2);
+    SetTextureFilter(ui->viewportRT.texture, TEXTURE_FILTER_BILINEAR);
+    SetTextureFilter(ui->animViewportRT.texture, TEXTURE_FILTER_BILINEAR);
+    ui->activeViewportTab = 0;
     ui->viewportHovered = false;
     ui->viewportFocused = false;
     ui->uiScale = 1.0f;
@@ -26,6 +36,7 @@ void ui_init(EditorUI *ui, int vpW, int vpH) {
     ui->transformMode = TMODE_TRANSLATE;
     ui->drawMode = DRAW_SOLID;
     ui->showTimeline = true;
+    ui->showConsole = true;
     ui->showHierarchy = true;
     ui->showProperties = true;
     ui->showAddObject = true;
@@ -55,6 +66,7 @@ void ui_update_layout(EditorUI *ui) {
 
 void ui_shutdown(EditorUI *ui) {
     UnloadRenderTexture(ui->viewportRT);
+    UnloadRenderTexture(ui->animViewportRT);
 }
 
 // ---- Dockspace ----
@@ -107,6 +119,7 @@ void ui_dockspace(EditorUI *ui) {
         ImGui::DockBuilderDockWindow("Properties", dockRightTop);
         ImGui::DockBuilderDockWindow("Camera", dockRightBottom);
         ImGui::DockBuilderDockWindow("Timeline", dockBottom);
+        ImGui::DockBuilderDockWindow("Console", dockBottom);
         ImGui::DockBuilderDockWindow("Viewport", dockMain);
 
         // hide tab bar on viewport node
@@ -114,9 +127,19 @@ void ui_dockspace(EditorUI *ui) {
         if (vpNode) vpNode->LocalFlags |= ImGuiDockNodeFlags_NoTabBar;
 
         ImGui::DockBuilderFinish(dockId);
+        ui->dockspaceInitFrames = 2; // need a couple frames for tabs to settle
     }
 
     ImGui::DockSpace(dockId, ImVec2(0, 0), ImGuiDockNodeFlags_None);
+
+    // focus Timeline tab after layout settles
+    if (ui->dockspaceInitFrames > 0) {
+        ui->dockspaceInitFrames--;
+        if (ui->dockspaceInitFrames == 0) {
+            ImGui::SetWindowFocus("Timeline");
+        }
+    }
+
     ImGui::End();
 }
 
@@ -242,6 +265,49 @@ void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui) {
         ImGui::Separator();
 
         if (ImGui::BeginMenu("File")) {
+            if (ImGui::BeginMenu("Examples")) {
+                bool found = false;
+#ifdef _WIN32
+                WIN32_FIND_DATAA fd;
+                HANDLE hFind = FindFirstFileA("examples\\*.scene", &fd);
+                if (hFind != INVALID_HANDLE_VALUE) {
+                    do {
+                        const char *name = fd.cFileName;
+                        size_t len = strlen(name);
+                        char label[256];
+                        snprintf(label, sizeof(label), "%.*s", (int)(len - 6), name);
+                        if (ImGui::MenuItem(label)) {
+                            snprintf(ui->loadPath, sizeof(ui->loadPath), "examples/%s", name);
+                            ui->wantLoad = true;
+                        }
+                        found = true;
+                    } while (FindNextFileA(hFind, &fd));
+                    FindClose(hFind);
+                }
+#else
+                DIR *dir = opendir("examples");
+                if (dir) {
+                    struct dirent *ent;
+                    while ((ent = readdir(dir)) != nullptr) {
+                        const char *name = ent->d_name;
+                        size_t len = strlen(name);
+                        if (len > 6 && strcmp(name + len - 6, ".scene") == 0) {
+                            char label[256];
+                            snprintf(label, sizeof(label), "%.*s", (int)(len - 6), name);
+                            if (ImGui::MenuItem(label)) {
+                                snprintf(ui->loadPath, sizeof(ui->loadPath), "examples/%s", name);
+                                ui->wantLoad = true;
+                            }
+                            found = true;
+                        }
+                    }
+                    closedir(dir);
+                }
+#endif
+                if (!found) ImGui::TextDisabled("No examples found");
+                ImGui::EndMenu();
+            }
+            ImGui::Separator();
             if (ImGui::MenuItem("Save", "Ctrl+S")) {
                 ui->wantSave = true;
             }
@@ -260,6 +326,7 @@ void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui) {
             ImGui::MenuItem("Add Object", nullptr, &ui->showAddObject);
             ImGui::MenuItem("Camera", nullptr, &ui->showCamera);
             ImGui::MenuItem("Timeline", nullptr, &ui->showTimeline);
+            ImGui::MenuItem("Console", nullptr, &ui->showConsole);
             ImGui::MenuItem("Grid", nullptr, &ui->showGrid);
             ImGui::Separator();
             const char *drawModeNames[] = { "Solid", "Wireframe", "Point" };
@@ -372,6 +439,36 @@ void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui) {
 void ui_viewport(EditorUI *ui) {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     ImGui::Begin("Viewport");
+
+    // tabs: Edit and Animation
+    ImGui::PushStyleColor(ImGuiCol_Tab,                ImVec4(0.22f, 0.22f, 0.22f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_TabHovered,         ImVec4(0.45f, 0.45f, 0.50f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_TabSelected,        ImVec4(0.35f, 0.38f, 0.48f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_TabSelectedOverline,ImVec4(0.50f, 0.55f, 0.75f, 1.0f));
+    if (ImGui::BeginTabBar("##ViewportTabs")) {
+        ImGuiTabItemFlags editFlags = (ui->activeViewportTab == 0 && !ui->playMode) ? 0 : 0;
+        ImGuiTabItemFlags animFlags = 0;
+        // programmatic tab switch via activeViewportTab set externally
+        static int lastTab = -1;
+        if (lastTab != ui->activeViewportTab) {
+            if (ui->activeViewportTab == 0) editFlags |= ImGuiTabItemFlags_SetSelected;
+            if (ui->activeViewportTab == 1) animFlags |= ImGuiTabItemFlags_SetSelected;
+            lastTab = ui->activeViewportTab;
+        }
+        if (ImGui::BeginTabItem("Edit", nullptr, editFlags)) {
+            ui->activeViewportTab = 0;
+            lastTab = 0;
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Animation", nullptr, animFlags)) {
+            ui->activeViewportTab = 1;
+            lastTab = 1;
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+    }
+    ImGui::PopStyleColor(4);
+
     ui->viewportHovered = ImGui::IsWindowHovered();
     ui->viewportFocused = ImGui::IsWindowFocused();
 
@@ -382,10 +479,15 @@ void ui_viewport(EditorUI *ui) {
     if (panelW < 1) panelW = 1;
     if (panelH < 1) panelH = 1;
 
-    // resize render texture to match panel exactly
+    // resize render textures to match panel (2x supersample for AA)
     if (panelW != ui->viewportW || panelH != ui->viewportH) {
         UnloadRenderTexture(ui->viewportRT);
-        ui->viewportRT = LoadRenderTexture(panelW, panelH);
+        UnloadRenderTexture(ui->animViewportRT);
+        ui->viewportRT = LoadRenderTexture(panelW * 2, panelH * 2);
+        ui->animViewportRT = LoadRenderTexture(panelW * 2, panelH * 2);
+        // set bilinear filtering for smooth downscale
+        SetTextureFilter(ui->viewportRT.texture, TEXTURE_FILTER_BILINEAR);
+        SetTextureFilter(ui->animViewportRT.texture, TEXTURE_FILTER_BILINEAR);
         ui->viewportW = panelW;
         ui->viewportH = panelH;
     }
@@ -396,7 +498,11 @@ void ui_viewport(EditorUI *ui) {
     ui->vpImageW = (float)panelW;
     ui->vpImageH = (float)panelH;
 
-    rlImGuiImageRenderTextureFit(&ui->viewportRT, true);
+    if (ui->activeViewportTab == 1) {
+        rlImGuiImageRenderTextureFit(&ui->animViewportRT, true);
+    } else {
+        rlImGuiImageRenderTextureFit(&ui->viewportRT, true);
+    }
     ImGui::End();
     ImGui::PopStyleVar();
 }
@@ -545,13 +651,13 @@ void ui_properties(Scene *s, EditorUI *ui) {
     ImGui::Checkbox("Visible", &obj->visible);
     ImGui::Separator();
 
-    if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Transform", 0)) {
         ImGui::DragFloat3("Position", &obj->transform.position.x, 0.1f);
         ImGui::DragFloat3("Rotation", &obj->transform.rotation.x, 1.0f);
         ImGui::DragFloat3("Scale",    &obj->transform.scale.x, 0.05f, 0.01f, 100.0f);
     }
 
-    if (obj->type != OBJ_LIGHT && obj->type != OBJ_CAMERA && ImGui::CollapsingHeader("Shader", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (obj->type != OBJ_LIGHT && obj->type != OBJ_CAMERA && ImGui::CollapsingHeader("Shader", 0)) {
         const char *shaderNames[] = { "Default (Blinn-Phong)", "Unlit", "Toon", "Normal", "Fresnel" };
         int cur = (int)obj->shaderType;
         if (ImGui::Combo("##ShaderType", &cur, shaderNames, SHADER_COUNT)) {
@@ -559,7 +665,7 @@ void ui_properties(Scene *s, EditorUI *ui) {
         }
     }
 
-    if (obj->type != OBJ_LIGHT && ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (obj->type != OBJ_LIGHT && ImGui::CollapsingHeader("Material", 0)) {
         float col[4] = {
             obj->material.color.r / 255.0f,
             obj->material.color.g / 255.0f,
@@ -631,7 +737,7 @@ void ui_properties(Scene *s, EditorUI *ui) {
         }
     }
 
-    if (ImGui::CollapsingHeader("Shape", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Shape", 0)) {
         switch (obj->type) {
             case OBJ_CUBE:
                 ImGui::DragFloat3("Size (W/H/D)", obj->cubeSize, 0.1f, 0.1f, 50.0f);
@@ -711,6 +817,34 @@ void ui_properties(Scene *s, EditorUI *ui) {
                 break;
             default:
                 break;
+        }
+    }
+
+    // animation scripts
+    if (obj && ImGui::CollapsingHeader("Scripts")) {
+        for (int s = 0; s < obj->scriptCount; s++) {
+            ImGui::PushID(s);
+            ImGui::SetNextItemWidth(-60);
+            char label[32];
+            snprintf(label, sizeof(label), "##Script%d", s);
+            ImGui::InputText(label, obj->scriptPaths[s], sizeof(obj->scriptPaths[s]));
+            ImGui::SameLine();
+            if (ImGui::Button("X")) {
+                // remove this script by shifting the rest down
+                for (int j = s; j < obj->scriptCount - 1; j++) {
+                    memcpy(obj->scriptPaths[j], obj->scriptPaths[j + 1], 256);
+                }
+                obj->scriptPaths[obj->scriptCount - 1][0] = '\0';
+                obj->scriptCount--;
+                s--; // re-check this index
+            }
+            ImGui::PopID();
+        }
+        if (obj->scriptCount < MAX_SCRIPTS) {
+            if (ImGui::Button("+ Add Script")) {
+                obj->scriptPaths[obj->scriptCount][0] = '\0';
+                obj->scriptCount++;
+            }
         }
     }
 
@@ -896,13 +1030,17 @@ void ui_timeline(Scene *s, Timeline *tl, EditorUI *ui) {
     if (!ui->showTimeline) return;
     ImGui::Begin("Timeline", &ui->showTimeline);
 
-    if (tl->state == PLAYBACK_PLAYING) {
-        if (ImGui::Button("Pause")) timeline_pause(tl);
+    if (ui->playMode) {
+        if (ui->paused) {
+            if (ImGui::Button("Resume")) ui->wantPause = true; // toggle pause off
+        } else {
+            if (ImGui::Button("Pause")) ui->wantPause = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Stop")) ui->wantStop = true;
     } else {
-        if (ImGui::Button("Play")) timeline_play(tl);
+        if (ImGui::Button("Play")) ui->wantPlay = true;
     }
-    ImGui::SameLine();
-    if (ImGui::Button("Stop")) timeline_stop(tl);
     ImGui::SameLine();
 
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 200);
@@ -938,6 +1076,57 @@ void ui_timeline(Scene *s, Timeline *tl, EditorUI *ui) {
                 if (i < obj->keyframeCount - 1) ImGui::SameLine();
             }
         }
+    }
+
+    ImGui::End();
+}
+
+// ---- Console (Lua scripting) ----
+
+void ui_console(ScriptState *ss, EditorUI *ui) {
+    if (!ui->showConsole) return;
+    ImGui::Begin("Console", &ui->showConsole);
+
+    // toolbar
+    if (ImGui::Button("Clear")) console_clear(&ss->console);
+
+    ImGui::Separator();
+
+    // output log
+    float footerHeight = ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeightWithSpacing();
+    ImGui::BeginChild("ConsoleLog", ImVec2(0, -footerHeight), false,
+                      ImGuiWindowFlags_HorizontalScrollbar);
+    for (int i = 0; i < ss->console.lineCount; i++) {
+        if (strncmp(ss->console.lines[i], "[error]", 7) == 0) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
+            ImGui::TextUnformatted(ss->console.lines[i]);
+            ImGui::PopStyleColor();
+        } else {
+            ImGui::TextUnformatted(ss->console.lines[i]);
+        }
+    }
+    if (ss->console.scrollToBottom) {
+        ImGui::SetScrollHereY(1.0f);
+        ss->console.scrollToBottom = false;
+    }
+    ImGui::EndChild();
+
+    // input line
+    ImGui::Separator();
+    bool reclaimFocus = false;
+    ImGuiInputTextFlags inputFlags = ImGuiInputTextFlags_EnterReturnsTrue;
+    ImGui::SetNextItemWidth(-1);
+    if (ImGui::InputText("##ConsoleInput", ss->console.inputBuf,
+                         sizeof(ss->console.inputBuf), inputFlags)) {
+        if (ss->console.inputBuf[0]) {
+            console_log(&ss->console, "> %s", ss->console.inputBuf);
+            script_exec(ss, ss->console.inputBuf);
+            ss->console.inputBuf[0] = '\0';
+        }
+        reclaimFocus = true;
+    }
+    if (reclaimFocus) {
+        ImGui::SetKeyboardFocusHere(-1);
     }
 
     ImGui::End();

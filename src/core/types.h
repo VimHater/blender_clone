@@ -154,6 +154,17 @@ struct SceneObject {
     // animation keyframes
     Keyframe keyframes[MAX_KEYFRAMES];
     int keyframeCount;
+
+    // per-object Lua animation scripts
+    #define MAX_SCRIPTS 8
+    char scriptPaths[MAX_SCRIPTS][256];
+    int scriptCount;
+};
+
+struct ObjectSnapshot {
+    ObjectTransform transform;
+    Color color;
+    bool visible;
 };
 
 SceneObject object_default(const char *name, ObjectType type);

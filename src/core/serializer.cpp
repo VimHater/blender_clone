@@ -66,6 +66,10 @@ struct ObjectData {
     // model path
     char modelPath[256];
 
+    // script paths
+    int scriptCount;
+    char scriptPaths[MAX_SCRIPTS][256];
+
     // keyframes
     int keyframeCount;
 };
@@ -97,7 +101,7 @@ struct UIData {
     float gridSpacing;
     int transformMode;
     int drawMode;
-    bool showTimeline, showHierarchy, showProperties, showAddObject, showCamera;
+    bool showTimeline, showConsole, showHierarchy, showProperties, showAddObject, showCamera;
 };
 
 static void obj_to_data(const SceneObject *obj, ObjectData *d) {
@@ -140,6 +144,9 @@ static void obj_to_data(const SceneObject *obj, ObjectData *d) {
     d->lightB = obj->lightColor.b; d->lightA = obj->lightColor.a;
     d->lightIntensity = obj->lightIntensity;
     strncpy(d->modelPath, obj->modelPath, 256);
+    d->scriptCount = obj->scriptCount;
+    for (int s = 0; s < obj->scriptCount && s < MAX_SCRIPTS; s++)
+        strncpy(d->scriptPaths[s], obj->scriptPaths[s], 256);
     d->keyframeCount = obj->keyframeCount;
 }
 
@@ -179,6 +186,9 @@ static void data_to_obj(const ObjectData *d, SceneObject *obj) {
     obj->lightColor = {d->lightR, d->lightG, d->lightB, d->lightA};
     obj->lightIntensity = d->lightIntensity;
     strncpy(obj->modelPath, d->modelPath, 256);
+    obj->scriptCount = d->scriptCount;
+    for (int s = 0; s < d->scriptCount && s < MAX_SCRIPTS; s++)
+        strncpy(obj->scriptPaths[s], d->scriptPaths[s], 256);
     obj->keyframeCount = d->keyframeCount;
 }
 
@@ -246,11 +256,19 @@ bool save_binary(const char *path, const EditorState *state) {
     ud.transformMode = (int)state->ui->transformMode;
     ud.drawMode = (int)state->ui->drawMode;
     ud.showTimeline = state->ui->showTimeline;
+    ud.showConsole = state->ui->showConsole;
     ud.showHierarchy = state->ui->showHierarchy;
     ud.showProperties = state->ui->showProperties;
     ud.showAddObject = state->ui->showAddObject;
     ud.showCamera = state->ui->showCamera;
     fwrite(&ud, sizeof(ud), 1, f);
+
+    // script path (length-prefixed string)
+    {
+        uint16_t len = (uint16_t)strlen(state->scripting->console.scriptPath);
+        fwrite(&len, sizeof(len), 1, f);
+        if (len > 0) fwrite(state->scripting->console.scriptPath, 1, len, f);
+    }
 
     fclose(f);
     return true;
@@ -337,10 +355,21 @@ bool load_binary(const char *path, EditorState *state) {
     state->ui->transformMode = (TransformMode)ud.transformMode;
     state->ui->drawMode = (DrawMode)ud.drawMode;
     state->ui->showTimeline = ud.showTimeline;
+    state->ui->showConsole = ud.showConsole;
     state->ui->showHierarchy = ud.showHierarchy;
     state->ui->showProperties = ud.showProperties;
     state->ui->showAddObject = ud.showAddObject;
     state->ui->showCamera = ud.showCamera;
+
+    // script path
+    {
+        uint16_t len = 0;
+        if (fread(&len, sizeof(len), 1, f) == 1 && len > 0 && len < sizeof(state->scripting->console.scriptPath)) {
+            fread(state->scripting->console.scriptPath, 1, len, f);
+            state->scripting->console.scriptPath[len] = '\0';
+            script_load_file(state->scripting, state->scripting->console.scriptPath);
+        }
+    }
 
     fclose(f);
     return true;
@@ -427,6 +456,11 @@ bool save_text(const char *path, const EditorState *state) {
         if (obj->type == OBJ_MODEL_FILE)
             fprintf(f, "model_path = %s\n", obj->modelPath);
 
+        fprintf(f, "script_count = %d\n", obj->scriptCount);
+        for (int s = 0; s < obj->scriptCount; s++) {
+            fprintf(f, "script_path = %s\n", obj->scriptPaths[s]);
+        }
+
         fprintf(f, "keyframe_count = %d\n", obj->keyframeCount);
         for (int k = 0; k < obj->keyframeCount; k++) {
             const Keyframe *kf = &obj->keyframes[k];
@@ -463,6 +497,11 @@ bool save_text(const char *path, const EditorState *state) {
     fprintf(f, "fps = %g\n", state->timeline->fps);
     fprintf(f, "\n");
 
+    // scripting
+    fprintf(f, "[scripting]\n");
+    fprintf(f, "script_path = %s\n", state->scripting->console.scriptPath);
+    fprintf(f, "\n");
+
     // ui
     fprintf(f, "[ui]\n");
     fprintf(f, "ui_scale = %g\n", state->ui->uiScale);
@@ -476,6 +515,7 @@ bool save_text(const char *path, const EditorState *state) {
     fprintf(f, "show_properties = %d\n", state->ui->showProperties ? 1 : 0);
     fprintf(f, "show_add_object = %d\n", state->ui->showAddObject ? 1 : 0);
     fprintf(f, "show_camera = %d\n", state->ui->showCamera ? 1 : 0);
+    fprintf(f, "show_console = %d\n", state->ui->showConsole ? 1 : 0);
     fprintf(f, "\n");
 
     fclose(f);
@@ -607,6 +647,13 @@ bool load_text(const char *path, EditorState *state) {
             else if (strcmp(key, "light_color") == 0) parse_color(val, &obj->lightColor);
             else if (strcmp(key, "light_intensity") == 0) obj->lightIntensity = (float)atof(val);
             else if (strcmp(key, "model_path") == 0) strncpy(obj->modelPath, val, 256);
+            else if (strcmp(key, "script_count") == 0) obj->scriptCount = atoi(val);
+            else if (strcmp(key, "script_path") == 0 && obj->scriptCount < MAX_SCRIPTS) {
+                // append to next available slot
+                int si = 0;
+                for (si = 0; si < MAX_SCRIPTS; si++) { if (obj->scriptPaths[si][0] == '\0') break; }
+                if (si < MAX_SCRIPTS) strncpy(obj->scriptPaths[si], val, 256);
+            }
             else if (strcmp(key, "keyframe_count") == 0) { obj->keyframeCount = atoi(val); kfIdx = 0; }
             else if (strcmp(key, "keyframe") == 0 && kfIdx < MAX_KEYFRAMES) {
                 Keyframe *kf = &obj->keyframes[kfIdx++];
@@ -637,6 +684,14 @@ bool load_text(const char *path, EditorState *state) {
             else if (strcmp(key, "end_frame") == 0) state->timeline->endFrame = atoi(val);
             else if (strcmp(key, "fps") == 0) state->timeline->fps = (float)atof(val);
         }
+        else if (strcmp(section, "scripting") == 0) {
+            if (strcmp(key, "script_path") == 0) {
+                snprintf(state->scripting->console.scriptPath, sizeof(state->scripting->console.scriptPath), "%s", val);
+                if (val[0]) {
+                    script_load_file(state->scripting, val);
+                }
+            }
+        }
         else if (strcmp(section, "ui") == 0) {
             if (strcmp(key, "ui_scale") == 0) state->ui->uiScale = (float)atof(val);
             else if (strcmp(key, "show_grid") == 0) state->ui->showGrid = atoi(val) != 0;
@@ -649,6 +704,7 @@ bool load_text(const char *path, EditorState *state) {
             else if (strcmp(key, "show_properties") == 0) state->ui->showProperties = atoi(val) != 0;
             else if (strcmp(key, "show_add_object") == 0) state->ui->showAddObject = atoi(val) != 0;
             else if (strcmp(key, "show_camera") == 0) state->ui->showCamera = atoi(val) != 0;
+            else if (strcmp(key, "show_console") == 0) state->ui->showConsole = atoi(val) != 0;
         }
     }
 

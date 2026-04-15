@@ -54,6 +54,7 @@ void editor_init(Editor *ed, int screenW, int screenH) {
     scene_init(&ed->scene);
     editor_camera_init(&ed->camera);
     timeline_init(&ed->timeline);
+    script_init(&ed->scripting, &ed->scene, &ed->timeline);
     ui_init(&ed->ui, screenW, screenH);
     shadowmap_init(&ed->shadowMap, 4096);
 
@@ -193,6 +194,45 @@ bool editor_should_close(const Editor *ed) {
     return !ed->running || ed->ui.wantClose || WindowShouldClose();
 }
 
+static void editor_snapshot(Editor *ed) {
+    ed->snapshotCount = ed->scene.objectCount;
+    for (int i = 0; i < ed->snapshotCount; i++) {
+        ed->snapshot[i].transform = ed->scene.objects[i].transform;
+        ed->snapshot[i].color = ed->scene.objects[i].material.color;
+        ed->snapshot[i].visible = ed->scene.objects[i].visible;
+    }
+}
+
+static void editor_restore(Editor *ed) {
+    for (int i = 0; i < ed->snapshotCount && i < ed->scene.objectCount; i++) {
+        ed->scene.objects[i].transform = ed->snapshot[i].transform;
+        ed->scene.objects[i].material.color = ed->snapshot[i].color;
+        ed->scene.objects[i].visible = ed->snapshot[i].visible;
+    }
+}
+
+static void editor_play(Editor *ed) {
+    if (ed->playMode) return;
+    editor_snapshot(ed);
+    script_load_object_scripts(&ed->scripting);
+    script_play(&ed->scripting);
+    timeline_play(&ed->timeline);
+    ed->playMode = true;
+    ed->ui.playMode = true;
+    ed->ui.activeViewportTab = 1; // switch to animation tab
+}
+
+static void editor_stop(Editor *ed) {
+    if (!ed->playMode) return;
+    script_stop(&ed->scripting);
+    timeline_stop(&ed->timeline);
+    editor_restore(ed);
+    ed->playMode = false;
+    ed->ui.playMode = false;
+    ed->ui.paused = false;
+    ed->ui.activeViewportTab = 0; // switch back to edit tab
+}
+
 void editor_update(Editor *ed) {
     // font scaling — rebuild atlas when target pixel size changes
     float targetFontSize = BASE_FONT_SIZE * ((float)GetScreenHeight() / 1080.0f) * ed->ui.uiScale;
@@ -202,19 +242,51 @@ void editor_update(Editor *ed) {
         rebuild_font(&ed->ui, targetFontSize);
     }
 
-    // timeline
-    timeline_update(&ed->timeline);
+    // handle load request from UI
+    if (ed->ui.wantLoad) {
+        ed->ui.wantLoad = false;
+        if (ed->playMode) editor_stop(ed);
+        if (!editor_load(ed, ed->ui.loadPath)) {
+            snprintf(ed->ui.errorMessage, sizeof(ed->ui.errorMessage),
+                     "Failed to load: %s", ed->ui.loadPath);
+            ed->ui.showErrorPopup = true;
+        }
+    }
 
-    // apply keyframe animation
-    if (ed->timeline.state == PLAYBACK_PLAYING) {
-        for (int i = 0; i < ed->scene.objectCount; i++) {
-            SceneObject *obj = &ed->scene.objects[i];
-            if (obj->keyframeCount > 0) {
-                ObjectTransform t;
-                keyframe_evaluate(obj, ed->timeline.currentFrame, &t);
-                obj->transform = t;
+    // handle play/stop/pause requests from UI
+    if (ed->ui.wantPlay) {
+        ed->ui.wantPlay = false;
+        editor_play(ed);
+    }
+    if (ed->ui.wantPause) {
+        ed->ui.wantPause = false;
+        if (ed->playMode) {
+            ed->ui.paused = !ed->ui.paused;
+        }
+    }
+    if (ed->ui.wantStop) {
+        ed->ui.wantStop = false;
+        editor_stop(ed);
+    }
+
+    // animation (only in play mode and not paused)
+    if (ed->playMode && !ed->ui.paused) {
+        timeline_update(&ed->timeline);
+
+        // apply keyframe animation
+        if (ed->timeline.state == PLAYBACK_PLAYING) {
+            for (int i = 0; i < ed->scene.objectCount; i++) {
+                SceneObject *obj = &ed->scene.objects[i];
+                if (obj->keyframeCount > 0) {
+                    ObjectTransform t;
+                    keyframe_evaluate(obj, ed->timeline.currentFrame, &t);
+                    obj->transform = t;
+                }
             }
         }
+
+        // Lua scripting update
+        script_update(&ed->scripting, GetFrameTime());
     }
 
     // camera (disable orbit/pan when in placement mode so clicks go to placement)
@@ -574,35 +646,64 @@ void editor_draw(Editor *ed) {
     }
     lighting_bind_shadow(&ed->lighting, hasShadow ? &ed->shadowMap : NULL, shadowLightIdx, shadowIsPoint);
 
-    // 3D scene to render texture
-    BeginTextureMode(ed->ui.viewportRT);
-        ClearBackground(DARKGRAY);
-        BeginMode3D(activeCam);
-            // override near/far clipping planes
-            {
-                double aspect = (double)ed->ui.viewportW / (double)ed->ui.viewportH;
-                Matrix proj;
-                if (activeOrtho) {
-                    double top = activeFov / 2.0;
-                    double right = top * aspect;
-                    proj = MatrixOrtho(-right, right, -top, top, activeNear, activeFar);
-                } else {
-                    proj = MatrixPerspective(activeFov * DEG2RAD, aspect, activeNear, activeFar);
+    // helper lambda: render 3D scene into a given render texture
+    auto renderScene = [&](RenderTexture2D rt, bool showGizmos) {
+        BeginTextureMode(rt);
+            ClearBackground(DARKGRAY);
+            BeginMode3D(activeCam);
+                {
+                    double aspect = (double)ed->ui.viewportW / (double)ed->ui.viewportH;
+                    Matrix proj;
+                    if (activeOrtho) {
+                        double top = activeFov / 2.0;
+                        double right = top * aspect;
+                        proj = MatrixOrtho(-right, right, -top, top, activeNear, activeFar);
+                    } else {
+                        proj = MatrixPerspective(activeFov * DEG2RAD, aspect, activeNear, activeFar);
+                    }
+                    rlSetMatrixProjection(proj);
                 }
-                rlSetMatrixProjection(proj);
-            }
-            if (ed->ui.showGrid) {
-                DrawGrid(ed->ui.gridSize, ed->ui.gridSpacing);
-            }
-            // main pass with lighting + shadows
-            scene_draw(&ed->scene, ed->ui.drawMode, &ed->lighting);
-            scene_draw_selection(&ed->scene);
-            scene_draw_gizmo(&ed->scene, ed->ui.transformMode, ed->ui.gizmoActiveAxis);
-            if (ed->ui.placementMode && ed->ui.placementValid) {
-                scene_draw_preview(ed->ui.placementType, ed->ui.placementPos);
-            }
-        EndMode3D();
-    EndTextureMode();
+                if (ed->ui.showGrid) {
+                    DrawGrid(ed->ui.gridSize, ed->ui.gridSpacing);
+                }
+                scene_draw(&ed->scene, ed->ui.drawMode, &ed->lighting);
+                if (showGizmos) {
+                    scene_draw_selection(&ed->scene);
+                    scene_draw_gizmo(&ed->scene, ed->ui.transformMode, ed->ui.gizmoActiveAxis);
+                    if (ed->ui.placementMode && ed->ui.placementValid) {
+                        scene_draw_preview(ed->ui.placementType, ed->ui.placementPos);
+                    }
+                }
+            EndMode3D();
+        EndTextureMode();
+    };
+
+    if (ed->playMode) {
+        // save current animated state
+        ObjectSnapshot animState[MAX_OBJECTS];
+        int animCount = ed->scene.objectCount;
+        for (int i = 0; i < animCount; i++) {
+            animState[i].transform = ed->scene.objects[i].transform;
+            animState[i].color = ed->scene.objects[i].material.color;
+            animState[i].visible = ed->scene.objects[i].visible;
+        }
+
+        // render edit viewport with snapshot (original) transforms
+        editor_restore(ed);
+        renderScene(ed->ui.viewportRT, true);
+
+        // restore animated state and render animation viewport
+        for (int i = 0; i < animCount && i < ed->scene.objectCount; i++) {
+            ed->scene.objects[i].transform = animState[i].transform;
+            ed->scene.objects[i].material.color = animState[i].color;
+            ed->scene.objects[i].visible = animState[i].visible;
+        }
+        renderScene(ed->ui.animViewportRT, false);
+    } else {
+        renderScene(ed->ui.viewportRT, true);
+        // always render animation viewport so it shows the scene when the tab is active
+        renderScene(ed->ui.animViewportRT, false);
+    }
 
     // UI
     BeginDrawing();
@@ -616,6 +717,7 @@ void editor_draw(Editor *ed) {
             ui_camera(&ed->scene, &ed->camera, &ed->ui);
             ui_properties(&ed->scene, &ed->ui);
             ui_timeline(&ed->scene, &ed->timeline, &ed->ui);
+            ui_console(&ed->scripting, &ed->ui);
             ui_save_as_popup(&ed->ui);
             ui_error_popup(&ed->ui);
             ui_shortcut_popup();
@@ -624,7 +726,7 @@ void editor_draw(Editor *ed) {
 }
 
 bool editor_save(Editor *ed, const char *path) {
-    EditorState state = { &ed->scene, &ed->camera, &ed->timeline, &ed->ui };
+    EditorState state = { &ed->scene, &ed->camera, &ed->timeline, &ed->scripting, &ed->ui };
     int len = (int)strlen(path);
     if (len > 7 && strcmp(path + len - 7, ".sceneb") == 0)
         return save_binary(path, &state);
@@ -632,7 +734,7 @@ bool editor_save(Editor *ed, const char *path) {
 }
 
 bool editor_load(Editor *ed, const char *path) {
-    EditorState state = { &ed->scene, &ed->camera, &ed->timeline, &ed->ui };
+    EditorState state = { &ed->scene, &ed->camera, &ed->timeline, &ed->scripting, &ed->ui };
     int len = (int)strlen(path);
     if (len > 7 && strcmp(path + len - 7, ".sceneb") == 0)
         return load_binary(path, &state);
@@ -645,6 +747,7 @@ void editor_shutdown(Editor *ed) {
         if (obj->modelLoaded) UnloadModel(obj->model);
         if (obj->material.hasTexture) UnloadTexture(obj->material.texture);
     }
+    script_shutdown(&ed->scripting);
     lighting_shutdown(&ed->lighting);
     shadowmap_unload(&ed->shadowMap);
     ui_shutdown(&ed->ui);

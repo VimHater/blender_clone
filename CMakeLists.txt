@@ -75,4 +75,11 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     endif()
 endif()
 
+# copy example files to build/examples/
+file(GLOB EXAMPLE_FILES "examples/*.scene" "examples/*.lua")
+foreach(EXAMPLE ${EXAMPLE_FILES})
+    get_filename_component(FNAME ${EXAMPLE} NAME)
+    configure_file(${EXAMPLE} "${CMAKE_BINARY_DIR}/examples/${FNAME}" COPYONLY)
+endforeach()
+
 set_property(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" PROPERTY VS_STARTUP_PROJECT melder)

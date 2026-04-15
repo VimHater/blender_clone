@@ -4,13 +4,16 @@
 #include <core/scene.h>
 #include <core/camera.h>
 #include <core/timeline.h>
+#include <core/scripting.h>
 
 struct EditorUI {
-    RenderTexture2D viewportRT;
+    RenderTexture2D viewportRT;      // edit viewport
+    RenderTexture2D animViewportRT;  // animation viewport
     int viewportW;
     int viewportH;
     bool viewportHovered;
     bool viewportFocused;
+    int activeViewportTab;  // 0 = Edit, 1 = Animation
 
     // viewport image rect (screen-space, after fit+center)
     float vpImageX, vpImageY;
@@ -27,12 +30,14 @@ struct EditorUI {
     TransformMode transformMode;
     DrawMode drawMode;
     bool showTimeline;
+    bool showConsole;
     bool showHierarchy;
     bool showProperties;
     bool showAddObject;
     bool showCamera;
 
     bool dockspaceInitialized;
+    int dockspaceInitFrames;    // frames remaining to apply post-init focus
 
     // active camera: 0 = editor camera, otherwise ID of a scene camera object
     uint32_t activeCameraId;
@@ -48,6 +53,13 @@ struct EditorUI {
     Vector2 titleBarDragOffset;
     bool wantClose;       // set by title bar close button
     bool wantSave;        // set by File > Save
+    bool wantLoad;        // set by File > Open / Examples
+    char loadPath[256];   // path to load
+    bool wantPlay;        // set by Play button in timeline
+    bool wantStop;        // set by Stop button in timeline
+    bool wantPause;       // set by Pause button in timeline
+    bool playMode;        // true while animation is running
+    bool paused;          // true while animation is paused
     bool showSaveAsPopup; // File > Save As popup
     char saveAsName[256]; // filename input buffer
 
@@ -74,6 +86,7 @@ void ui_properties(Scene *s, EditorUI *ui);
 void ui_add_object(Scene *s, EditorUI *ui);
 void ui_camera(Scene *s, EditorCamera *ec, EditorUI *ui);
 void ui_timeline(Scene *s, Timeline *tl, EditorUI *ui);
+void ui_console(ScriptState *ss, EditorUI *ui);
 void ui_save_as_popup(EditorUI *ui);
 void ui_error_popup(EditorUI *ui);
 void ui_shortcut_popup();

@@ -7,16 +7,23 @@
 #include <core/shadow.h>
 #include <core/raycast.h>
 #include <core/lighting.h>
+#include <core/scripting.h>
 #include <ui/ui.h>
 
 struct Editor {
     Scene scene;
     EditorCamera camera;
     Timeline timeline;
+    ScriptState scripting;
     EditorUI ui;
     ShadowMap shadowMap;
     LightingState lighting;
     bool running;
+
+    // play mode: snapshot edit state, animate on copy
+    ObjectSnapshot snapshot[MAX_OBJECTS];
+    int snapshotCount;
+    bool playMode;
 };
 
 void editor_init(Editor *ed, int screenW, int screenH);

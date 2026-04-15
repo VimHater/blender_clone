@@ -4,6 +4,7 @@
 #include "types.h"
 #include "camera.h"
 #include "timeline.h"
+#include "scripting.h"
 #include "../ui/ui.h"
 
 struct Scene;
@@ -12,6 +13,7 @@ struct EditorState {
     Scene *scene;
     EditorCamera *camera;
     Timeline *timeline;
+    ScriptState *scripting;
     EditorUI *ui;
 };
 
