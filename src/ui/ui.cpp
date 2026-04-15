@@ -154,7 +154,7 @@ void ui_save_as_popup(EditorUI *ui) {
         ImGui::OpenPopup("Save As");
         ui->showSaveAsPopup = false;
     }
-    ImGui::SetNextWindowSizeConstraints(ImVec2(400, 0), ImVec2(600, 200));
+    ImGui::SetNextWindowSize(ImVec2(450, 0), ImGuiCond_Always);
     if (ImGui::BeginPopupModal("Save As", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("File name:");
         ImGui::SetNextItemWidth(-40);
