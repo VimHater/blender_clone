@@ -231,7 +231,7 @@ void editor_update(Editor *ed) {
         ed->ui.wantSave = false;
         char savePath[768];
         const char *appDir = GetApplicationDirectory();
-        snprintf(savePath, sizeof(savePath), "%s../%s", appDir, ed->ui.saveAsName);
+        snprintf(savePath, sizeof(savePath), "%s%s", appDir, ed->ui.saveAsName);
         if (editor_save(ed, savePath)) {
             snprintf(ed->ui.errorMessage, sizeof(ed->ui.errorMessage), "Saved to %s", savePath);
         } else {
@@ -475,27 +475,79 @@ void editor_draw(Editor *ed) {
     lighting_collect(&ed->lighting, &ed->scene);
     lighting_update_shader(&ed->lighting, activeCam.position);
 
-    // shadow pass: render depth from the first directional light
+    // shadow pass: render depth from the first shadow-casting light
     bool hasShadow = false;
+    bool shadowIsPoint = false;
+    int shadowLightIdx = 0;
     if (ed->shadowMap.initialized) {
+        // compute scene bounds from all geometry objects
+        Vector3 sceneCenter = {0, 0, 0};
+        float sceneRadius = 10.0f;
+        {
+            Vector3 bmin = { 1e9f,  1e9f,  1e9f};
+            Vector3 bmax = {-1e9f, -1e9f, -1e9f};
+            int geomCount = 0;
+            for (int i = 0; i < ed->scene.objectCount; i++) {
+                const SceneObject *obj = &ed->scene.objects[i];
+                if (!obj->active || !obj->visible) continue;
+                if (obj->type == OBJ_LIGHT || obj->type == OBJ_CAMERA) continue;
+                Vector3 p = obj->transform.position;
+                if (p.x < bmin.x) bmin.x = p.x;
+                if (p.y < bmin.y) bmin.y = p.y;
+                if (p.z < bmin.z) bmin.z = p.z;
+                if (p.x > bmax.x) bmax.x = p.x;
+                if (p.y > bmax.y) bmax.y = p.y;
+                if (p.z > bmax.z) bmax.z = p.z;
+                geomCount++;
+            }
+            if (geomCount > 0) {
+                sceneCenter = Vector3{
+                    (bmin.x + bmax.x) * 0.5f,
+                    (bmin.y + bmax.y) * 0.5f,
+                    (bmin.z + bmax.z) * 0.5f};
+                float dx = bmax.x - bmin.x;
+                float dy = bmax.y - bmin.y;
+                float dz = bmax.z - bmin.z;
+                sceneRadius = sqrtf(dx*dx + dy*dy + dz*dz) * 0.5f + 5.0f;
+                if (sceneRadius < 15.0f) sceneRadius = 15.0f;
+            }
+        }
+
+        // prefer directional lights, fall back to point lights
         for (int i = 0; i < ed->lighting.lightCount; i++) {
             if (ed->lighting.lights[i].type == LIGHT_DIRECTIONAL) {
                 Vector3 dir = ed->lighting.lights[i].direction;
-                float sceneRadius = activeFar * 0.3f;
-                if (sceneRadius > 50.0f) sceneRadius = 50.0f;
-                Vector3 sceneCenter = ed->camera.target;
-
                 shadowmap_begin(&ed->shadowMap, dir, sceneCenter, sceneRadius);
+                rlDisableBackfaceCulling();
                 BeginShaderMode(ed->shadowMap.depthShader);
                 scene_draw(&ed->scene, DRAW_SOLID, NULL);
                 EndShaderMode();
+                rlEnableBackfaceCulling();
                 shadowmap_end(&ed->shadowMap);
                 hasShadow = true;
+                shadowLightIdx = i;
                 break;
             }
         }
+        if (!hasShadow) {
+            for (int i = 0; i < ed->lighting.lightCount; i++) {
+                if (ed->lighting.lights[i].type == LIGHT_POINT) {
+                    Vector3 pos = ed->lighting.lights[i].position;
+                    shadowmap_begin_point(&ed->shadowMap, pos, sceneCenter, sceneRadius);
+                    rlDisableBackfaceCulling();
+                    BeginShaderMode(ed->shadowMap.depthShader);
+                    scene_draw(&ed->scene, DRAW_SOLID, NULL);
+                    EndShaderMode();
+                    rlEnableBackfaceCulling();
+                    shadowmap_end(&ed->shadowMap);
+                    hasShadow = true;
+                    shadowLightIdx = i;
+                    break;
+                }
+            }
+        }
     }
-    lighting_bind_shadow(&ed->lighting, hasShadow ? &ed->shadowMap : NULL);
+    lighting_bind_shadow(&ed->lighting, hasShadow ? &ed->shadowMap : NULL, shadowLightIdx, shadowIsPoint);
 
     // 3D scene to render texture
     BeginTextureMode(ed->ui.viewportRT);

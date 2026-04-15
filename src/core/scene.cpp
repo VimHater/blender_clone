@@ -496,9 +496,13 @@ static void draw_object(const SceneObject *obj, DrawMode mode, Shader *shader) {
 void scene_draw(const Scene *s, DrawMode mode, LightingState *ls) {
     for (int i = 0; i < s->objectCount; i++) {
         const SceneObject *obj = &s->objects[i];
+        bool isHelper = (obj->type == OBJ_LIGHT || obj->type == OBJ_CAMERA);
+        // shadow depth pass (ls == NULL): skip helper objects entirely
+        if (!ls && isHelper) continue;
+        // main pass: draw helper objects without lit shader (no shadow receive)
         Shader *shader = NULL;
         ShaderType st = obj->shaderType;
-        if (ls && ls->shaderLoaded[st]) {
+        if (ls && ls->shaderLoaded[st] && !isHelper) {
             shader = &ls->shaders[st];
             BeginShaderMode(*shader);
         }

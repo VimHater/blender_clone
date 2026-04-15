@@ -28,6 +28,8 @@ struct LightingState {
     int lightSpaceMatrixLoc[SHADER_COUNT];
     int shadowMapLoc[SHADER_COUNT];
     int hasShadowLoc[SHADER_COUNT];
+    int shadowLightIndexLoc[SHADER_COUNT];
+    int shadowIsPointLoc[SHADER_COUNT];
 
     float ambientColor[4];
     LightData lights[MAX_SHADER_LIGHTS];
@@ -38,6 +40,6 @@ void lighting_init(LightingState *ls);
 void lighting_shutdown(LightingState *ls);
 void lighting_collect(LightingState *ls, const struct Scene *s);
 void lighting_update_shader(LightingState *ls, Vector3 cameraPos);
-void lighting_bind_shadow(LightingState *ls, ShadowMap *sm);
+void lighting_bind_shadow(LightingState *ls, ShadowMap *sm, int shadowLightIndex = 0, bool isPoint = false);
 
 #endif // CORE_LIGHTING_H

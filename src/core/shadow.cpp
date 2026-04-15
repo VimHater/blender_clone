@@ -92,6 +92,37 @@ void shadowmap_begin(ShadowMap *sm, Vector3 lightDir, Vector3 sceneCenter, float
     rlSetMatrixProjection(lightProj);
 }
 
+void shadowmap_begin_point(ShadowMap *sm, Vector3 lightPos, Vector3 sceneCenter, float sceneRadius) {
+    if (!sm->initialized) return;
+
+    Vector3 dir = Vector3Subtract(sceneCenter, lightPos);
+    float len = Vector3Length(dir);
+    if (len < 0.001f) return;
+
+    Vector3 up = (fabsf(dir.y / len) < 0.99f) ? Vector3{0, 1, 0} : Vector3{1, 0, 0};
+    Matrix lightView = MatrixLookAt(lightPos, sceneCenter, up);
+
+    // use orthographic projection centered on the scene so the entire scene
+    // is covered regardless of light position — no hard frustum cutoff
+    float extent = sceneRadius * 1.5f;
+    float dist = len + sceneRadius * 2.0f;
+    Matrix lightProj = MatrixOrtho(-extent, extent, -extent, extent, 0.1f, dist);
+
+    sm->lightSpaceMatrix = MatrixMultiply(lightView, lightProj);
+
+    Camera3D lightCam = {0};
+    lightCam.position = lightPos;
+    lightCam.target = sceneCenter;
+    lightCam.up = up;
+    lightCam.fovy = extent * 2.0f;
+    lightCam.projection = CAMERA_ORTHOGRAPHIC;
+
+    BeginTextureMode(sm->rt);
+    ClearBackground(WHITE);
+    BeginMode3D(lightCam);
+    rlSetMatrixProjection(lightProj);
+}
+
 void shadowmap_end(ShadowMap *sm) {
     if (!sm->initialized) return;
     EndMode3D();
