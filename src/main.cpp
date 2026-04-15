@@ -2,10 +2,15 @@
 #define DEFAULT_SCREEN_W 1920
 #define DEFAULT_SCREEN_H 1080
 
-int main() {
+int main(int argc, char **argv) {
+    const char *filePath = (argc > 1) ? argv[1] : NULL;
 
     Editor *editor = new Editor();
     editor_init(editor, DEFAULT_SCREEN_W, DEFAULT_SCREEN_H);
+
+    if (filePath) {
+        editor_load(editor, filePath);
+    }
 
     while (!editor_should_close(editor)) {
         editor_update(editor);

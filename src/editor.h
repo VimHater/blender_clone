@@ -24,5 +24,7 @@ bool editor_should_close(const Editor *ed);
 void editor_update(Editor *ed);
 void editor_draw(Editor *ed);
 void editor_shutdown(Editor *ed);
+bool editor_save(Editor *ed, const char *path);
+bool editor_load(Editor *ed, const char *path);
 
 #endif // EDITOR_H

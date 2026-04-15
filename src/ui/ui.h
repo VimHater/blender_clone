@@ -46,7 +46,10 @@ struct EditorUI {
     // title bar dragging
     bool titleBarDragging;
     Vector2 titleBarDragOffset;
-    bool wantClose;  // set by title bar close button
+    bool wantClose;       // set by title bar close button
+    bool wantSave;        // set by File > Save
+    bool showSaveAsPopup; // File > Save As popup
+    char saveAsName[256]; // filename input buffer
 
     // error popup
     bool showErrorPopup;
@@ -71,6 +74,7 @@ void ui_properties(Scene *s, EditorUI *ui);
 void ui_add_object(Scene *s, EditorUI *ui);
 void ui_camera(Scene *s, EditorCamera *ec, EditorUI *ui);
 void ui_timeline(Scene *s, Timeline *tl, EditorUI *ui);
+void ui_save_as_popup(EditorUI *ui);
 void ui_error_popup(EditorUI *ui);
 void ui_shortcut_popup();
 

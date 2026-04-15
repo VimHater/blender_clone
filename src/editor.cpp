@@ -3,7 +3,9 @@
 #include "rlgl.h"
 #include "imgui.h"
 #include "core/raycast.h"
+#include "core/serializer.h"
 #include <cstdio>
+#include <cstring>
 #include <cmath>
 
 static const float BASE_FONT_SIZE = 36.0f;
@@ -44,7 +46,7 @@ static void rebuild_font(EditorUI *ui, float fontSize) {
 void editor_init(Editor *ed, int screenW, int screenH) {
     // window
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_UNDECORATED | FLAG_MSAA_4X_HINT);
-    InitWindow(screenW, screenH, "btw");
+    InitWindow(screenW, screenH, "Melder");
     SetTargetFPS(60);
     SetExitKey(KEY_NULL); // disable ESC to quit
 
@@ -218,6 +220,25 @@ void editor_update(Editor *ed) {
     // camera (disable orbit/pan when in placement mode so clicks go to placement)
     editor_camera_update(&ed->camera,
         ed->ui.viewportHovered && !ed->ui.placementMode && !ImGui::GetIO().WantCaptureKeyboard);
+
+    // Ctrl+S save shortcut
+    if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_S)) {
+        ed->ui.wantSave = true;
+    }
+
+    // handle save request
+    if (ed->ui.wantSave) {
+        ed->ui.wantSave = false;
+        char savePath[768];
+        const char *appDir = GetApplicationDirectory();
+        snprintf(savePath, sizeof(savePath), "%s../%s", appDir, ed->ui.saveAsName);
+        if (editor_save(ed, savePath)) {
+            snprintf(ed->ui.errorMessage, sizeof(ed->ui.errorMessage), "Saved to %s", savePath);
+        } else {
+            snprintf(ed->ui.errorMessage, sizeof(ed->ui.errorMessage), "Failed to save!");
+        }
+        ed->ui.showErrorPopup = true;
+    }
 
     // transform mode shortcuts
     if (!ImGui::GetIO().WantCaptureKeyboard) {
@@ -518,10 +539,27 @@ void editor_draw(Editor *ed) {
             ui_camera(&ed->scene, &ed->camera, &ed->ui);
             ui_properties(&ed->scene, &ed->ui);
             ui_timeline(&ed->scene, &ed->timeline, &ed->ui);
+            ui_save_as_popup(&ed->ui);
             ui_error_popup(&ed->ui);
             ui_shortcut_popup();
         rlImGuiEnd();
     EndDrawing();
+}
+
+bool editor_save(Editor *ed, const char *path) {
+    EditorState state = { &ed->scene, &ed->camera, &ed->timeline, &ed->ui };
+    int len = (int)strlen(path);
+    if (len > 7 && strcmp(path + len - 7, ".sceneb") == 0)
+        return save_binary(path, &state);
+    return save_text(path, &state);
+}
+
+bool editor_load(Editor *ed, const char *path) {
+    EditorState state = { &ed->scene, &ed->camera, &ed->timeline, &ed->ui };
+    int len = (int)strlen(path);
+    if (len > 7 && strcmp(path + len - 7, ".sceneb") == 0)
+        return load_binary(path, &state);
+    return load_text(path, &state);
 }
 
 void editor_shutdown(Editor *ed) {

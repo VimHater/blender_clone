@@ -35,6 +35,9 @@ void ui_init(EditorUI *ui, int vpW, int vpH) {
     ui->titleBarDragging = false;
     ui->titleBarDragOffset = {0, 0};
     ui->wantClose = false;
+    ui->wantSave = false;
+    ui->showSaveAsPopup = false;
+    strncpy(ui->saveAsName, "project.scene", sizeof(ui->saveAsName));
     ui->showErrorPopup = false;
     ui->errorMessage[0] = '\0';
     ui->gizmoActiveAxis = GIZMO_NONE;
@@ -87,9 +90,9 @@ void ui_dockspace(EditorUI *ui) {
         ImGui::DockBuilderSetNodeSize(dockId, vp->WorkSize);
 
         ImGuiID dockMain = dockId;
-        ImGuiID dockLeft = ImGui::DockBuilderSplitNode(dockMain, ImGuiDir_Left, 0.15f, nullptr, &dockMain);
-        ImGuiID dockRight = ImGui::DockBuilderSplitNode(dockMain, ImGuiDir_Right, 0.22f, nullptr, &dockMain);
-        ImGuiID dockBottom = ImGui::DockBuilderSplitNode(dockMain, ImGuiDir_Down, 0.25f, nullptr, &dockMain);
+        ImGuiID dockLeft = ImGui::DockBuilderSplitNode(dockMain, ImGuiDir_Left, 0.20f, nullptr, &dockMain);
+        ImGuiID dockRight = ImGui::DockBuilderSplitNode(dockMain, ImGuiDir_Right, 0.35f, nullptr, &dockMain);
+        ImGuiID dockBottom = ImGui::DockBuilderSplitNode(dockMain, ImGuiDir_Down, 0.30f, nullptr, &dockMain);
 
         // split left: hierarchy on top, add object on bottom
         ImGuiID dockLeftTop, dockLeftBottom;
@@ -119,13 +122,37 @@ void ui_dockspace(EditorUI *ui) {
 
 // ---- Error Popup ----
 
+void ui_save_as_popup(EditorUI *ui) {
+    if (ui->showSaveAsPopup) {
+        ImGui::OpenPopup("Save As");
+        ui->showSaveAsPopup = false;
+    }
+    ImGui::SetNextWindowSizeConstraints(ImVec2(400, 0), ImVec2(600, 200));
+    if (ImGui::BeginPopupModal("Save As", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("File name:");
+        ImGui::SetNextItemWidth(-1);
+        bool enter = ImGui::InputText("##saveas", ui->saveAsName, sizeof(ui->saveAsName),
+                                       ImGuiInputTextFlags_EnterReturnsTrue);
+        ImGui::Separator();
+        if (ImGui::Button("Save", ImVec2(120, 0)) || enter) {
+            ui->wantSave = true;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+}
+
 void ui_error_popup(EditorUI *ui) {
     if (ui->showErrorPopup) {
-        ImGui::OpenPopup("Error");
+        ImGui::OpenPopup("Notice");
         ui->showErrorPopup = false;
     }
     ImGui::SetNextWindowSizeConstraints(ImVec2(400, 0), ImVec2(600, 300));
-    if (ImGui::BeginPopupModal("Error", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (ImGui::BeginPopupModal("Notice", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextWrapped("%s", ui->errorMessage);
         ImGui::Separator();
         if (ImGui::Button("OK", ImVec2(-1, 0))) {
@@ -211,10 +238,17 @@ void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui) {
     // --- Menu bar inside the title bar window ---
     if (ImGui::BeginMenuBar()) {
         // app title
-        ImGui::TextColored(ImVec4(0.6f, 0.75f, 1.0f, 1.0f), "btw");
+        ImGui::TextColored(ImVec4(0.6f, 0.75f, 1.0f, 1.0f), "Melder");
         ImGui::Separator();
 
         if (ImGui::BeginMenu("File")) {
+            if (ImGui::MenuItem("Save", "Ctrl+S")) {
+                ui->wantSave = true;
+            }
+            if (ImGui::MenuItem("Save As...")) {
+                ui->showSaveAsPopup = true;
+            }
+            ImGui::Separator();
             if (ImGui::MenuItem("Exit")) {
                 ui->wantClose = true;
             }
@@ -238,10 +272,10 @@ void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui) {
 
         // right side: shortcut hint + window buttons flush to edge
         float buttonsW = buttonW * 3; // no spacing between buttons
-        float hintW = ImGui::CalcTextSize("/ Shortcuts").x;
+        float hintW = ImGui::CalcTextSize("press / for Shortcuts").x;
         float rightContentW = hintW + ImGui::GetStyle().ItemSpacing.x + buttonsW;
         ImGui::SameLine(ImGui::GetWindowWidth() - rightContentW);
-        ImGui::TextDisabled("/ Shortcuts");
+        ImGui::TextDisabled("press / for Shortcuts");
 
         // window control buttons — flush to right edge, no background, glow on hover
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
