@@ -10,6 +10,10 @@
 #else
 #include <dirent.h>
 #endif
+
+extern "C" {
+#include <tinyfiledialogs.h>
+}
 #include "builtin_textures/checkerboard.texture_array"
 #include "builtin_textures/brick.texture_array"
 #include "builtin_textures/sand.texture_array"
@@ -153,9 +157,16 @@ void ui_save_as_popup(EditorUI *ui) {
     ImGui::SetNextWindowSizeConstraints(ImVec2(400, 0), ImVec2(600, 200));
     if (ImGui::BeginPopupModal("Save As", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("File name:");
-        ImGui::SetNextItemWidth(-1);
+        ImGui::SetNextItemWidth(-40);
         bool enter = ImGui::InputText("##saveas", ui->saveAsName, sizeof(ui->saveAsName),
                                        ImGuiInputTextFlags_EnterReturnsTrue);
+        ImGui::SameLine();
+        if (ImGui::Button("...##saveas")) {
+            char const *filters[] = {"*.scene", "*.sceneb"};
+            char const *result = tinyfd_saveFileDialog(
+                "Save As", ui->saveAsName, 2, filters, "Scene files");
+            if (result) snprintf(ui->saveAsName, sizeof(ui->saveAsName), "%s", result);
+        }
         ImGui::Separator();
         if (ImGui::Button("Save", ImVec2(120, 0)) || enter) {
             ui->wantSave = true;
@@ -306,6 +317,15 @@ void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui) {
 #endif
                 if (!found) ImGui::TextDisabled("No examples found");
                 ImGui::EndMenu();
+            }
+            if (ImGui::MenuItem("Open...", "Ctrl+O")) {
+                char const *filters[] = {"*.scene", "*.sceneb"};
+                char const *result = tinyfd_openFileDialog(
+                    "Open Scene", "", 2, filters, "Scene files", 0);
+                if (result) {
+                    snprintf(ui->loadPath, sizeof(ui->loadPath), "%s", result);
+                    ui->wantLoad = true;
+                }
             }
             ImGui::Separator();
             if (ImGui::MenuItem("Save", "Ctrl+S")) {
@@ -719,7 +739,15 @@ void ui_properties(Scene *s, EditorUI *ui) {
             }
             if (texSel == TEX_FROM_FILE) {
                 static char texPathBuf[256] = {};
+                ImGui::SetNextItemWidth(-120);
                 ImGui::InputText("Path##tex", texPathBuf, sizeof(texPathBuf));
+                ImGui::SameLine();
+                if (ImGui::Button("...##tex")) {
+                    char const *filters[] = {"*.png", "*.jpg", "*.jpeg", "*.bmp", "*.tga"};
+                    char const *result = tinyfd_openFileDialog(
+                        "Select Texture", "", 5, filters, "Image files", 0);
+                    if (result) snprintf(texPathBuf, sizeof(texPathBuf), "%s", result);
+                }
                 ImGui::SameLine();
                 if (ImGui::Button("Load##tex")) {
                     if (texPathBuf[0] != '\0') {
@@ -824,10 +852,17 @@ void ui_properties(Scene *s, EditorUI *ui) {
     if (obj && ImGui::CollapsingHeader("Scripts")) {
         for (int s = 0; s < obj->scriptCount; s++) {
             ImGui::PushID(s);
-            ImGui::SetNextItemWidth(-60);
+            ImGui::SetNextItemWidth(-90);
             char label[32];
             snprintf(label, sizeof(label), "##Script%d", s);
             ImGui::InputText(label, obj->scriptPaths[s], sizeof(obj->scriptPaths[s]));
+            ImGui::SameLine();
+            if (ImGui::Button("...")) {
+                char const *filters[] = {"*.lua"};
+                char const *result = tinyfd_openFileDialog(
+                    "Select Script", "", 1, filters, "Lua scripts", 0);
+                if (result) snprintf(obj->scriptPaths[s], sizeof(obj->scriptPaths[s]), "%s", result);
+            }
             ImGui::SameLine();
             if (ImGui::Button("X")) {
                 // remove this script by shifting the rest down
@@ -887,8 +922,15 @@ void ui_add_object(Scene *s, EditorUI *ui) {
     ImGui::Separator();
     ImGui::Text("Load Model File");
     static char modelPathBuf[256] = {};
-    ImGui::SetNextItemWidth(-1);
+    ImGui::SetNextItemWidth(-40);
     ImGui::InputTextWithHint("##ModelPath", "File path (.obj, .gltf, ...)", modelPathBuf, sizeof(modelPathBuf));
+    ImGui::SameLine();
+    if (ImGui::Button("...##model")) {
+        char const *filters[] = {"*.obj", "*.gltf", "*.glb", "*.fbx", "*.iqm"};
+        char const *result = tinyfd_openFileDialog(
+            "Select Model", "", 5, filters, "3D model files", 0);
+        if (result) snprintf(modelPathBuf, sizeof(modelPathBuf), "%s", result);
+    }
     if (ImGui::Button("Load Model", ImVec2(-1, 0))) {
         if (modelPathBuf[0] != '\0') {
             int idx = scene_add_model(s, modelPathBuf);

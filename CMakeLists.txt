@@ -26,8 +26,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(lua PRIVATE m)
 endif()
 
+# tinyfiledialogs (compiled as C)
+add_library(tinyfd STATIC "tinyfiledialogs/tinyfiledialogs.c")
+target_include_directories(tinyfd PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/tinyfiledialogs")
+
 add_executable(melder ${SOURCES})
-target_link_libraries(melder PRIVATE lua)
+target_link_libraries(melder PRIVATE lua tinyfd)
 
 target_include_directories(melder PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_include_directories(melder PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
