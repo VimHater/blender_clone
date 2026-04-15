@@ -219,7 +219,7 @@ void editor_update(Editor *ed) {
 
     // camera (disable orbit/pan when in placement mode so clicks go to placement)
     editor_camera_update(&ed->camera,
-        ed->ui.viewportHovered && !ed->ui.placementMode && !ImGui::GetIO().WantCaptureKeyboard);
+        ed->ui.viewportHovered && !ImGui::GetIO().WantCaptureKeyboard);
 
     // Ctrl+S save shortcut
     if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_S)) {
@@ -261,10 +261,22 @@ void editor_update(Editor *ed) {
                                 localY * (float)ed->ui.viewportH };
             Ray ray = GetScreenToWorldRayEx(rtMouse, ed->camera.cam, ed->ui.viewportW, ed->ui.viewportH);
 
-            // intersect with ground plane y=0
-            if (ray.direction.y != 0.0f) {
+            // 1) try raycast against scene geometry
+            float maxDist = 50.0f;
+            RayHitResult hit = raycast_scene(&ed->scene, ray);
+            if (hit.hit && hit.distance < maxDist) {
+                // place on surface with small offset along normal
+                ed->ui.placementPos = Vector3{
+                    hit.point.x + hit.normal.x * 0.01f,
+                    hit.point.y + hit.normal.y * 0.01f,
+                    hit.point.z + hit.normal.z * 0.01f
+                };
+                ed->ui.placementValid = true;
+            }
+            // 2) fall back to ground plane y=0
+            else if (ray.direction.y != 0.0f) {
                 float t = -ray.position.y / ray.direction.y;
-                if (t > 0.0f) {
+                if (t > 0.0f && t < maxDist) {
                     ed->ui.placementPos = Vector3{
                         ray.position.x + ray.direction.x * t,
                         0.0f,
@@ -272,10 +284,23 @@ void editor_update(Editor *ed) {
                     };
                     ed->ui.placementValid = true;
                 } else {
-                    ed->ui.placementValid = false;
+                    // ground too far or behind camera — fixed distance along ray
+                    float d = (t > 0.0f) ? maxDist : 10.0f;
+                    ed->ui.placementPos = Vector3{
+                        ray.position.x + ray.direction.x * d,
+                        ray.position.y + ray.direction.y * d,
+                        ray.position.z + ray.direction.z * d
+                    };
+                    ed->ui.placementValid = true;
                 }
             } else {
-                ed->ui.placementValid = false;
+                // ray parallel to ground — fixed distance along ray
+                ed->ui.placementPos = Vector3{
+                    ray.position.x + ray.direction.x * 10.0f,
+                    ray.position.y + ray.direction.y * 10.0f,
+                    ray.position.z + ray.direction.z * 10.0f
+                };
+                ed->ui.placementValid = true;
             }
 
             // left-click to place
