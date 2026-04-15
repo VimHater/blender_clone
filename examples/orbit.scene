@@ -1,0 +1,175 @@
+[scene]
+object_count = 3
+next_id = 4
+selected_count = 1
+selected = 2
+
+[object.0]
+id = 1
+name = Sphere
+type = 2
+active = 1
+visible = 1
+parent = -1
+pos = 0 0 0
+rot = 0 0 0
+scale = 2 2 2
+color = 255 255 255 255
+has_texture = 1
+texture_path = [built-in] Wood
+roughness = 0.5
+metallic = 0
+cube_size = 2 2 2
+sphere_radius = 1
+cylinder_radius_top = 0.5
+cylinder_radius_bottom = 0.5
+cylinder_height = 2
+sphere_rings = 16
+sphere_slices = 64
+torus_radius = 0.5
+torus_size = 1
+torus_rad_seg = 16
+torus_sides = 30
+capsule_radius = 0.5
+capsule_height = 2
+poly_sides = 6
+poly_radius = 1
+cone_radius = 0.5
+cone_height = 2
+cone_slices = 16
+cam_fov = 45
+cam_near = 0.1
+cam_far = 1000
+cam_ortho = 0
+shader = 0
+light_type = 0
+light_color = 255 255 255 255
+light_intensity = 3
+script_count = 0
+keyframe_count = 0
+
+[object.1]
+id = 2
+name = Sphere.001
+type = 2
+active = 1
+visible = 1
+parent = -1
+pos = -1.79541 0 3.57442
+rot = 0 0 0
+scale = 1 1 1
+color = 255 255 255 255
+has_texture = 1
+texture_path = [built-in] Sand
+roughness = 0.5
+metallic = 0
+cube_size = 2 2 2
+sphere_radius = 1
+cylinder_radius_top = 0.5
+cylinder_radius_bottom = 0.5
+cylinder_height = 2
+sphere_rings = 16
+sphere_slices = 16
+torus_radius = 0.5
+torus_size = 1
+torus_rad_seg = 16
+torus_sides = 30
+capsule_radius = 0.5
+capsule_height = 2
+poly_sides = 6
+poly_radius = 1
+cone_radius = 0.5
+cone_height = 2
+cone_slices = 16
+cam_fov = 45
+cam_near = 0.1
+cam_far = 1000
+cam_ortho = 0
+shader = 0
+light_type = 0
+light_color = 255 255 255 255
+light_intensity = 3
+script_count = 1
+script_path = examples/orbit.lua
+keyframe_count = 0
+
+[object.2]
+id = 3
+name = Light
+type = 12
+active = 1
+visible = 1
+parent = -1
+pos = -1.30485 5.96839 -2.4471
+rot = 0 0 0
+scale = 1 1 1
+color = 255 255 255 255
+has_texture = 0
+roughness = 0.5
+metallic = 0
+cube_size = 2 2 2
+sphere_radius = 1
+cylinder_radius_top = 0.5
+cylinder_radius_bottom = 0.5
+cylinder_height = 2
+sphere_rings = 16
+sphere_slices = 16
+torus_radius = 0.5
+torus_size = 1
+torus_rad_seg = 16
+torus_sides = 30
+capsule_radius = 0.5
+capsule_height = 2
+poly_sides = 6
+poly_radius = 1
+cone_radius = 0.5
+cone_height = 2
+cone_slices = 16
+cam_fov = 45
+cam_near = 0.1
+cam_far = 1000
+cam_ortho = 0
+shader = 0
+light_type = 0
+light_color = 255 255 255 255
+light_intensity = 3
+script_count = 0
+keyframe_count = 0
+
+[camera]
+target = 0.402905 3.50018 3.178
+distance = 15
+yaw = 0.8
+pitch = 0.6
+zoom_speed = 1.5
+pan_speed = 0.01
+orbit_speed = 0.003
+move_speed = 10
+fov = 45
+near = 0.1
+far = 1000
+ortho = 0
+
+[timeline]
+current_frame = 154
+start_frame = 0
+end_frame = 250
+fps = 24
+
+[scripting]
+script_path = 
+
+[ui]
+ui_scale = 1
+show_grid = 1
+grid_size = 10
+grid_spacing = 1
+transform_mode = 0
+draw_mode = 0
+show_timeline = 1
+show_hierarchy = 1
+show_properties = 1
+show_add_object = 1
+show_camera = 1
+show_console = 1
+
