@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <cstring>
 #ifdef _WIN32
-#include <windows.h>
+#include <io.h>    // _findfirst/_findnext (no Win32 API conflicts with raylib)
 #else
 #include <dirent.h>
 #endif
@@ -279,11 +279,11 @@ void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui) {
             if (ImGui::BeginMenu("Examples")) {
                 bool found = false;
 #ifdef _WIN32
-                WIN32_FIND_DATAA fd;
-                HANDLE hFind = FindFirstFileA("examples\\*.scene", &fd);
-                if (hFind != INVALID_HANDLE_VALUE) {
+                struct _finddata_t fd;
+                intptr_t hFind = _findfirst("examples\\*.scene", &fd);
+                if (hFind != -1) {
                     do {
-                        const char *name = fd.cFileName;
+                        const char *name = fd.name;
                         size_t len = strlen(name);
                         char label[256];
                         snprintf(label, sizeof(label), "%.*s", (int)(len - 6), name);
@@ -292,8 +292,8 @@ void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui) {
                             ui->wantLoad = true;
                         }
                         found = true;
-                    } while (FindNextFileA(hFind, &fd));
-                    FindClose(hFind);
+                    } while (_findnext(hFind, &fd) == 0);
+                    _findclose(hFind);
                 }
 #else
                 DIR *dir = opendir("examples");
