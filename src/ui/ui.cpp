@@ -717,8 +717,20 @@ void ui_properties(Scene *s, EditorUI *ui) {
             static const int TEX_COUNT = 8;
             static const int TEX_FROM_FILE = 7;
             static int texSel = 0;
-            // only sync to None if we're not already in "From file..." mode (waiting for path input)
-            if (!obj->material.hasTexture && texSel != TEX_FROM_FILE) texSel = 0;
+            static uint32_t lastTexObjId = 0;
+            // sync texSel when selected object changes
+            if (obj->id != lastTexObjId) {
+                lastTexObjId = obj->id;
+                if (!obj->material.hasTexture) {
+                    texSel = 0;
+                } else if (strstr(obj->material.texturePath, "Checkerboard")) texSel = 1;
+                else if (strstr(obj->material.texturePath, "Brick")) texSel = 2;
+                else if (strstr(obj->material.texturePath, "Sand")) texSel = 3;
+                else if (strstr(obj->material.texturePath, "Brushed Metal")) texSel = 4;
+                else if (strstr(obj->material.texturePath, "Wood")) texSel = 5;
+                else if (strstr(obj->material.texturePath, "Grass")) texSel = 6;
+                else texSel = TEX_FROM_FILE;
+            }
             if (ImGui::Combo("##TexSelect", &texSel, texOptions, TEX_COUNT)) {
                 switch (texSel) {
                     case 0: object_clear_texture(obj); break;
