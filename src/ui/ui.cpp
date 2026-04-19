@@ -58,6 +58,7 @@ void ui_init(EditorUI *ui, int vpW, int vpH) {
     ui->gizmoActiveAxis = GIZMO_NONE;
     ui->gizmoDragging = false;
     ui->placementMode = false;
+    ui->repeatPlayback = true;
     ui->placementValid = false;
     ui->vpImageX = ui->vpImageY = 0;
     ui->vpImageW = ui->vpImageH = 0;
@@ -651,7 +652,7 @@ void ui_hierarchy(Scene *s, EditorUI *ui) {
 
 // ---- Properties ----
 
-void ui_properties(Scene *s, EditorUI *ui) {
+void ui_properties(Scene *s, Timeline *tl, EditorUI *ui) {
     if (!ui->showProperties) return;
     ImGui::Begin("Properties", &ui->showProperties);
 
@@ -671,9 +672,13 @@ void ui_properties(Scene *s, EditorUI *ui) {
     ImGui::Separator();
 
     if (ImGui::CollapsingHeader("Transform", 0)) {
-        ImGui::DragFloat3("Position", &obj->transform.position.x, 0.1f);
-        ImGui::DragFloat3("Rotation", &obj->transform.rotation.x, 1.0f);
-        ImGui::DragFloat3("Scale",    &obj->transform.scale.x, 0.05f, 0.01f, 100.0f);
+        bool changed = false;
+        changed |= ImGui::DragFloat3("Position", &obj->transform.position.x, 0.1f);
+        changed |= ImGui::DragFloat3("Rotation", &obj->transform.rotation.x, 1.0f);
+        changed |= ImGui::DragFloat3("Scale",    &obj->transform.scale.x, 0.05f, 0.01f, 100.0f);
+        if (changed && obj->keyframeCount > 0) {
+            keyframe_sync(obj, tl->currentFrame);
+        }
     }
 
     if (obj->type != OBJ_LIGHT && obj->type != OBJ_CAMERA && ImGui::CollapsingHeader("Shader", 0)) {
@@ -1096,13 +1101,23 @@ void ui_timeline(Scene *s, Timeline *tl, EditorUI *ui) {
     }
     ImGui::SameLine();
 
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 200);
+    bool unlimited = tl->endFrame >= 999999;
+    int sliderMax = unlimited ? 1000 : tl->endFrame;
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 330);
     int frame = tl->currentFrame;
-    if (ImGui::SliderInt("##Frame", &frame, tl->startFrame, tl->endFrame)) {
+    if (ImGui::SliderInt("##Frame", &frame, tl->startFrame, sliderMax)) {
         timeline_set_frame(tl, frame);
     }
     ImGui::SameLine();
-    ImGui::Text("Frame: %d", tl->currentFrame);
+    float timeSec = tl->currentFrame / tl->fps;
+    if (unlimited) {
+        ImGui::Text("Frame: %d (%.1fs)", tl->currentFrame, timeSec);
+    } else {
+        float totalSec = tl->endFrame / tl->fps;
+        ImGui::Text("%d/%d (%.1f/%.1fs)", tl->currentFrame, tl->endFrame, timeSec, totalSec);
+    }
+    ImGui::SameLine();
+    ImGui::Checkbox("Repeat", &ui->repeatPlayback);
 
     SceneObject *obj = scene_first_selected(s);
     if (obj) {

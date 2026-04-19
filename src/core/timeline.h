@@ -22,5 +22,6 @@ void timeline_set_frame(Timeline *tl, int frame);
 void keyframe_insert(SceneObject *obj, int frame);
 void keyframe_remove(SceneObject *obj, int frame);
 void keyframe_evaluate(const SceneObject *obj, int frame, ObjectTransform *outTransform);
+void keyframe_sync(SceneObject *obj, int frame);  // update keyframe at frame with current transform
 
 #endif // CORE_TIMELINE_H

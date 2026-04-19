@@ -54,6 +54,7 @@ void editor_init(Editor *ed, int screenW, int screenH) {
     scene_init(&ed->scene);
     editor_camera_init(&ed->camera);
     timeline_init(&ed->timeline);
+    ed->lastKeyframeFrame = ed->timeline.currentFrame;
     script_init(&ed->scripting, &ed->scene, &ed->timeline);
     ui_init(&ed->ui, screenW, screenH);
     shadowmap_init(&ed->shadowMap, 4096);
@@ -287,6 +288,28 @@ void editor_update(Editor *ed) {
 
         // Lua scripting update
         script_update(&ed->scripting, GetFrameTime());
+
+        // check if animation reached end of duration
+        if (ed->timeline.endFrame < 999999 && !ed->ui.repeatPlayback) {
+            double elapsed = GetTime() - ed->scripting.startTime;
+            double duration = (double)ed->timeline.endFrame / ed->timeline.fps;
+            if (elapsed >= duration) {
+                editor_stop(ed);
+            }
+        }
+    }
+
+    // evaluate keyframes when scrubbing timeline (not during play mode)
+    if (!ed->playMode && ed->timeline.currentFrame != ed->lastKeyframeFrame) {
+        ed->lastKeyframeFrame = ed->timeline.currentFrame;
+        for (int i = 0; i < ed->scene.objectCount; i++) {
+            SceneObject *obj = &ed->scene.objects[i];
+            if (obj->active && obj->keyframeCount > 0) {
+                ObjectTransform t;
+                keyframe_evaluate(obj, ed->timeline.currentFrame, &t);
+                obj->transform = t;
+            }
+        }
     }
 
     // camera (disable orbit/pan when in placement mode so clicks go to placement)
@@ -413,6 +436,11 @@ void editor_update(Editor *ed) {
     // gizmo drag interaction
     if (ed->ui.gizmoDragging) {
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            // sync transform to keyframe if on one
+            SceneObject *obj = scene_first_selected(&ed->scene);
+            if (obj && obj->keyframeCount > 0) {
+                keyframe_sync(obj, ed->timeline.currentFrame);
+            }
             ed->ui.gizmoDragging = false;
             ed->ui.gizmoActiveAxis = GIZMO_NONE;
         } else {
@@ -716,7 +744,7 @@ void editor_draw(Editor *ed) {
             ui_hierarchy(&ed->scene, &ed->ui);
             ui_add_object(&ed->scene, &ed->ui);
             ui_camera(&ed->scene, &ed->camera, &ed->ui);
-            ui_properties(&ed->scene, &ed->ui);
+            ui_properties(&ed->scene, &ed->timeline, &ed->ui);
             ui_timeline(&ed->scene, &ed->timeline, &ed->ui);
             ui_console(&ed->scripting, &ed->ui);
             ui_save_as_popup(&ed->ui);

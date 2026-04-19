@@ -13,6 +13,9 @@ void timeline_update(Timeline *tl) {
     if (tl->state != PLAYBACK_PLAYING) return;
     double now = GetTime();
     double frameDur = 1.0 / tl->fps;
+    // don't auto-advance frames when unlimited (scripts use real time instead)
+    if (tl->endFrame >= 999999) return;
+
     if (now - tl->lastTickTime >= frameDur) {
         tl->currentFrame++;
         if (tl->currentFrame > tl->endFrame) {
@@ -39,7 +42,7 @@ void timeline_stop(Timeline *tl) {
 void timeline_set_frame(Timeline *tl, int frame) {
     tl->currentFrame = frame;
     if (tl->currentFrame < tl->startFrame) tl->currentFrame = tl->startFrame;
-    if (tl->currentFrame > tl->endFrame) tl->currentFrame = tl->endFrame;
+    if (tl->endFrame < 999999 && tl->currentFrame > tl->endFrame) tl->currentFrame = tl->endFrame;
 }
 
 // ---- Keyframes ----
@@ -74,6 +77,15 @@ void keyframe_remove(SceneObject *obj, int frame) {
                 obj->keyframes[j] = obj->keyframes[j + 1];
             }
             obj->keyframeCount--;
+            return;
+        }
+    }
+}
+
+void keyframe_sync(SceneObject *obj, int frame) {
+    for (int i = 0; i < obj->keyframeCount; i++) {
+        if (obj->keyframes[i].frame == frame) {
+            obj->keyframes[i].transform = obj->transform;
             return;
         }
     }

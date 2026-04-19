@@ -60,6 +60,7 @@ struct EditorUI {
     bool wantPause;       // set by Pause button in timeline
     bool playMode;        // true while animation is running
     bool paused;          // true while animation is paused
+    bool repeatPlayback;  // loop animation at end of duration
     bool showSaveAsPopup; // File > Save As popup
     char saveAsName[256]; // filename input buffer
 
@@ -82,7 +83,7 @@ void ui_dockspace(EditorUI *ui);
 void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui);
 void ui_viewport(EditorUI *ui);
 void ui_hierarchy(Scene *s, EditorUI *ui);
-void ui_properties(Scene *s, EditorUI *ui);
+void ui_properties(Scene *s, Timeline *tl, EditorUI *ui);
 void ui_add_object(Scene *s, EditorUI *ui);
 void ui_camera(Scene *s, EditorCamera *ec, EditorUI *ui);
 void ui_timeline(Scene *s, Timeline *tl, EditorUI *ui);

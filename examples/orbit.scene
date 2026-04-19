@@ -151,13 +151,13 @@ far = 1000
 ortho = 0
 
 [timeline]
-current_frame = 154
+current_frame = 0
 start_frame = 0
 end_frame = 250
 fps = 24
 
 [scripting]
-script_path = 
+script_path =
 
 [ui]
 ui_scale = 1

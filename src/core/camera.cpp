@@ -94,6 +94,45 @@ void editor_camera_update(EditorCamera *ec, bool inputAllowed) {
     if (IsKeyDown(KEY_LEFT_SHIFT)) ec->target.y -= speed;
     if (IsKeyDown(KEY_SPACE)) ec->target.y += speed;
 
+    // gamepad support
+    if (IsGamepadAvailable(0)) {
+        float deadzone = 0.15f;
+
+        // left stick: move (forward/back, strafe)
+        float lx = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X);
+        float ly = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y);
+        if (fabsf(lx) > deadzone)
+            ec->target = Vector3Add(ec->target, Vector3Scale(rightXZ, lx * speed * 2.0f));
+        if (fabsf(ly) > deadzone)
+            ec->target = Vector3Add(ec->target, Vector3Scale(forwardXZ, -ly * speed * 2.0f));
+
+        // right stick: orbit (look around)
+        float rx = GetGamepadAxisMovement(0, GAMEPAD_AXIS_RIGHT_X);
+        float ry = GetGamepadAxisMovement(0, GAMEPAD_AXIS_RIGHT_Y);
+        if (fabsf(rx) > deadzone) ec->yaw += rx * ec->orbitSpeed * 3.0f;
+        if (fabsf(ry) > deadzone) {
+            ec->pitch += ry * ec->orbitSpeed * 3.0f;
+            if (ec->pitch > 1.5f) ec->pitch = 1.5f;
+            if (ec->pitch < -1.5f) ec->pitch = -1.5f;
+        }
+
+        // triggers: zoom in/out
+        float lt = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_TRIGGER);
+        float rt = GetGamepadAxisMovement(0, GAMEPAD_AXIS_RIGHT_TRIGGER);
+        if (lt > deadzone) {
+            ec->distance += lt * ec->zoomSpeed * 0.1f;
+            if (ec->distance > 200.0f) ec->distance = 200.0f;
+        }
+        if (rt > deadzone) {
+            ec->distance -= rt * ec->zoomSpeed * 0.1f;
+            if (ec->distance < 1.0f) ec->distance = 1.0f;
+        }
+
+        // bumpers: move up/down
+        if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_TRIGGER_1))  ec->target.y -= speed;
+        if (IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_TRIGGER_1)) ec->target.y += speed;
+    }
+
     editor_camera_sync(ec);
 }
 

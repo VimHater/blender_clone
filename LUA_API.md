@@ -1,6 +1,6 @@
 # Lua Scripting API
 
-## Overview
+## Scripting
 
 Each object can have multiple Lua animation scripts assigned via the Properties panel. Scripts define an `animate(t, dt)` function that runs every frame during play mode.
 
@@ -16,6 +16,21 @@ function animate(t, dt)
     -- dt = delta time(seconds)
 end
 ```
+
+## Duration
+
+Scripts can optionally define a `duration` variable (in seconds) at the top level. The engine reads it when loading scripts and sets the timeline length to the longest duration across all scripts. If no script defines `duration`, playback is unlimited.
+
+```lua
+duration = 5.0  -- animation lasts 5 seconds
+
+function animate(t, dt)
+    local progress = t / duration
+    set_position(self.name, 0, progress * 10, 0)
+end
+```
+
+When a duration is set, the timeline loops at the end. Without it, the timeline runs indefinitely until the user hits Stop.
 
 ## Globals
 

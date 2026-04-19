@@ -348,6 +348,9 @@ void script_load_object_scripts(ScriptState *ss) {
     lua_newtable(L);
     lua_setglobal(L, "__obj_scripts");
 
+    double maxDuration = 0.0;
+    bool anyDuration = false;
+
     for (int i = 0; i < ss->scene->objectCount; i++) {
         SceneObject *obj = &ss->scene->objects[i];
         if (!obj->active || obj->scriptCount == 0) continue;
@@ -380,6 +383,20 @@ void script_load_object_scripts(ScriptState *ss) {
                 continue;
             }
 
+            // capture duration if defined
+            lua_getglobal(L, "duration");
+            if (lua_isnumber(L, -1)) {
+                double dur = lua_tonumber(L, -1);
+                if (dur > maxDuration) maxDuration = dur;
+                anyDuration = true;
+                console_log(&ss->console, "  duration: %.1fs", dur);
+            }
+            lua_pop(L, 1);
+
+            // clear global duration to avoid leaking to next script
+            lua_pushnil(L);
+            lua_setglobal(L, "duration");
+
             // capture animate function
             lua_getglobal(L, "animate");
             if (lua_isfunction(L, -1)) {
@@ -399,6 +416,17 @@ void script_load_object_scripts(ScriptState *ss) {
         // store array in __obj_scripts[obj.id]
         lua_rawseti(L, -2, (lua_Integer)obj->id);
         lua_pop(L, 1); // __obj_scripts
+    }
+
+    // set timeline end frame based on max script duration
+    if (anyDuration) {
+        int endFrame = (int)(maxDuration * ss->timeline->fps);
+        if (endFrame < 1) endFrame = 1;
+        ss->timeline->endFrame = endFrame;
+        console_log(&ss->console, "Timeline set to %d frames (%.1fs)", endFrame, maxDuration);
+    } else {
+        // no duration defined — unlimited playback
+        ss->timeline->endFrame = 999999;
     }
 }
 

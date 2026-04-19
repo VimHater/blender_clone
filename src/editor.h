@@ -24,6 +24,7 @@ struct Editor {
     ObjectSnapshot snapshot[MAX_OBJECTS];
     int snapshotCount;
     bool playMode;
+    int lastKeyframeFrame;  // track frame changes for keyframe evaluation
 };
 
 void editor_init(Editor *ed, int screenW, int screenH);
