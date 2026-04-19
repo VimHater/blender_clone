@@ -328,9 +328,99 @@ static bool gen_object_mesh(const SceneObject *obj, Mesh *out) {
         case OBJ_POLY:
             *out = GenMeshPoly(obj->polySides, obj->polyRadius);
             return true;
-        case OBJ_CAPSULE:
-            // GenMeshCapsule is not in raylib, skip
-            return false;
+        case OBJ_CAPSULE: {
+            // Generate capsule mesh: cylinder body + two hemisphere caps
+            int slices = 16;
+            int rings = 8; // rings per hemisphere
+            float radius = obj->capsuleRadius;
+            float halfH = obj->capsuleHeight * 0.5f;
+            float bodyH = halfH - radius;
+            if (bodyH < 0) bodyH = 0;
+
+            // vertex/triangle counts
+            int cylVerts = (slices + 1) * 2;
+            int capVerts = (rings + 1) * (slices + 1);
+            int totalVerts = cylVerts + capVerts * 2;
+            int cylTris = slices * 2;
+            int capTris = rings * slices * 2;
+            int totalTris = cylTris + capTris * 2;
+
+            float *vertices  = (float *)RL_CALLOC(totalVerts * 3, sizeof(float));
+            float *normals   = (float *)RL_CALLOC(totalVerts * 3, sizeof(float));
+            float *texcoords = (float *)RL_CALLOC(totalVerts * 2, sizeof(float));
+            unsigned short *indices = (unsigned short *)RL_CALLOC(totalTris * 3, sizeof(unsigned short));
+
+            int vi = 0, ti = 0, ii = 0;
+
+            // cylinder body
+            for (int i = 0; i <= slices; i++) {
+                float a = (float)i / slices * 2.0f * PI;
+                float nx = cosf(a), nz = sinf(a);
+                float u = (float)i / slices;
+                // bottom ring
+                vertices[vi*3]   = nx * radius; vertices[vi*3+1] = -bodyH; vertices[vi*3+2] = nz * radius;
+                normals[vi*3]    = nx; normals[vi*3+1] = 0; normals[vi*3+2] = nz;
+                texcoords[vi*2]  = u; texcoords[vi*2+1] = 1.0f;
+                vi++;
+                // top ring
+                vertices[vi*3]   = nx * radius; vertices[vi*3+1] = bodyH; vertices[vi*3+2] = nz * radius;
+                normals[vi*3]    = nx; normals[vi*3+1] = 0; normals[vi*3+2] = nz;
+                texcoords[vi*2]  = u; texcoords[vi*2+1] = 0.0f;
+                vi++;
+            }
+            for (int i = 0; i < slices; i++) {
+                int b = i * 2, t = b + 1;
+                indices[ii++] = b; indices[ii++] = t; indices[ii++] = b+2;
+                indices[ii++] = t; indices[ii++] = t+2; indices[ii++] = b+2;
+            }
+
+            // helper: add hemisphere cap
+            // ring 0 = equator (connects to cylinder), ring `rings` = pole
+            auto addCap = [&](float yCenter, bool top) {
+                int baseVi = vi;
+                for (int r = 0; r <= rings; r++) {
+                    float phi = (float)r / rings * PI * 0.5f; // 0=equator, PI/2=pole
+                    float ny = sinf(phi) * (top ? 1.0f : -1.0f);
+                    float rr = cosf(phi); // radius at this ring
+                    for (int s = 0; s <= slices; s++) {
+                        float a = (float)s / slices * 2.0f * PI;
+                        float nx = cosf(a) * rr, nz = sinf(a) * rr;
+                        vertices[vi*3]   = nx * radius;
+                        vertices[vi*3+1] = yCenter + ny * radius;
+                        vertices[vi*3+2] = nz * radius;
+                        normals[vi*3]    = nx; normals[vi*3+1] = ny; normals[vi*3+2] = nz;
+                        texcoords[vi*2]  = (float)s / slices;
+                        texcoords[vi*2+1] = top ? (float)r / rings * 0.5f : 1.0f - (float)r / rings * 0.5f;
+                        vi++;
+                    }
+                }
+                for (int r = 0; r < rings; r++) {
+                    for (int s = 0; s < slices; s++) {
+                        int cur = baseVi + r * (slices + 1) + s;
+                        int nxt = cur + slices + 1;
+                        if (top) {
+                            indices[ii++] = cur; indices[ii++] = nxt; indices[ii++] = cur+1;
+                            indices[ii++] = cur+1; indices[ii++] = nxt; indices[ii++] = nxt+1;
+                        } else {
+                            indices[ii++] = cur; indices[ii++] = cur+1; indices[ii++] = nxt;
+                            indices[ii++] = cur+1; indices[ii++] = nxt+1; indices[ii++] = nxt;
+                        }
+                    }
+                }
+            };
+
+            addCap(bodyH, true);   // top hemisphere
+            addCap(-bodyH, false); // bottom hemisphere
+
+            out->vertexCount = vi;
+            out->triangleCount = ii / 3;
+            out->vertices = vertices;
+            out->normals = normals;
+            out->texcoords = texcoords;
+            out->indices = indices;
+            UploadMesh(out, false);
+            return true;
+        }
         default: return false;
     }
 }
@@ -378,6 +468,7 @@ static void draw_object(const SceneObject *obj, DrawMode mode, Shader *shader) {
         case OBJ_TORUS:
         case OBJ_KNOT:
         case OBJ_POLY:
+        case OBJ_CAPSULE:
             draw_model_object(obj, mode, c, shader);
             rlPopMatrix();
             return;
@@ -386,18 +477,19 @@ static void draw_object(const SceneObject *obj, DrawMode mode, Shader *shader) {
     }
 
     switch (obj->type) {
-        case OBJ_CAPSULE:
+        case OBJ_CAPSULE: {
+            float chH = obj->capsuleHeight * 0.5f - obj->capsuleRadius;
+            if (chH < 0) chH = 0;
             if (mode == DRAW_SOLID)
-                DrawCapsule(Vector3{0, -obj->capsuleHeight * 0.5f, 0},
-                            Vector3{0,  obj->capsuleHeight * 0.5f, 0},
+                DrawCapsule(Vector3{0, -chH, 0}, Vector3{0, chH, 0},
                             obj->capsuleRadius, 16, 8, c);
             else if (mode == DRAW_WIREFRAME)
-                DrawCapsuleWires(Vector3{0, -obj->capsuleHeight * 0.5f, 0},
-                                 Vector3{0,  obj->capsuleHeight * 0.5f, 0},
+                DrawCapsuleWires(Vector3{0, -chH, 0}, Vector3{0, chH, 0},
                                  obj->capsuleRadius, 16, 8, c);
             else
                 DrawPoint3D(Vector3{0,0,0}, c);
             break;
+        }
         case OBJ_TEAPOT:
         case OBJ_MODEL_FILE:
             if (obj->modelLoaded) {
@@ -556,11 +648,13 @@ static void draw_selection_outline(const SceneObject *obj) {
             DrawSphereWires(Vector3{0,0,0}, obj->polyRadius, 8, 8, sel);
             break;
         }
-        case OBJ_CAPSULE:
-            DrawCapsuleWires(Vector3{0, -obj->capsuleHeight * 0.5f, 0},
-                             Vector3{0,  obj->capsuleHeight * 0.5f, 0},
+        case OBJ_CAPSULE: {
+            float chH = obj->capsuleHeight * 0.5f - obj->capsuleRadius;
+            if (chH < 0) chH = 0;
+            DrawCapsuleWires(Vector3{0, -chH, 0}, Vector3{0, chH, 0},
                              obj->capsuleRadius, 16, 8, sel);
             break;
+        }
         case OBJ_TEAPOT:
         case OBJ_MODEL_FILE:
             if (obj->modelLoaded) {

@@ -216,10 +216,9 @@ void ui_shortcut_popup() {
         ImGui::BulletText("W/A/S/D   Move camera");
         ImGui::BulletText("Space     Move up");
         ImGui::BulletText("Shift     Move down");
+        ImGui::BulletText("Alt hold  FPS camera (mouse look + WASD)");
         ImGui::BulletText("MMB drag  Orbit");
-        ImGui::BulletText("G + mouse Orbit");
         ImGui::BulletText("Shift+MMB Pan");
-        ImGui::BulletText("G+Ctrl    Pan");
         ImGui::BulletText("Scroll    Zoom");
 
         ImGui::Separator();

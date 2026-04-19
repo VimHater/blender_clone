@@ -35,9 +35,27 @@ void editor_camera_sync(EditorCamera *ec) {
 void editor_camera_update(EditorCamera *ec, bool inputAllowed) {
     if (!inputAllowed) return;
 
-    // orbit/pan: middle mouse or hold G + mouse move
-    bool orbiting = IsMouseButtonDown(MOUSE_BUTTON_MIDDLE) || IsKeyDown(KEY_G);
-    if (orbiting) {
+    bool altHeld = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
+
+    // hide/show cursor on alt press/release
+    if (altHeld && !IsCursorHidden()) {
+        DisableCursor();
+    } else if (!altHeld && IsCursorHidden()) {
+        EnableCursor();
+    }
+
+    // Alt held: FPS-style mouse look
+    if (altHeld) {
+        Vector2 delta = GetMouseDelta();
+        ec->yaw   += delta.x * ec->orbitSpeed;
+        ec->pitch += delta.y * ec->orbitSpeed;
+        if (ec->pitch > 1.5f) ec->pitch = 1.5f;
+        if (ec->pitch < -1.5f) ec->pitch = -1.5f;
+    }
+
+    // orbit/pan: middle mouse
+    bool orbiting = IsMouseButtonDown(MOUSE_BUTTON_MIDDLE);
+    if (orbiting && !altHeld) {
         Vector2 delta = GetMouseDelta();
         bool panModifier = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
         if (panModifier) {
@@ -61,12 +79,11 @@ void editor_camera_update(EditorCamera *ec, bool inputAllowed) {
         if (ec->distance > 200.0f) ec->distance = 200.0f;
     }
 
-    // WASD movement (moves the target point)
+    // WASD movement (always active)
     float dt = GetFrameTime();
     float speed = ec->moveSpeed * dt;
     Vector3 forward = Vector3Normalize(Vector3Subtract(ec->cam.target, ec->cam.position));
     Vector3 right = Vector3Normalize(Vector3CrossProduct(forward, ec->cam.up));
-    // project forward onto XZ plane for horizontal movement
     Vector3 forwardXZ = Vector3Normalize(Vector3{forward.x, 0, forward.z});
     Vector3 rightXZ = Vector3Normalize(Vector3{right.x, 0, right.z});
 

@@ -479,7 +479,8 @@ void editor_update(Editor *ed) {
 
     // viewport click: gizmo pick first, then object select
     if (!ed->ui.gizmoDragging && !ed->ui.placementMode
-        && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)
+        && !IsKeyDown(KEY_LEFT_ALT)) {
         Vector2 mouse = GetMousePosition();
         float localX = (mouse.x - ed->ui.vpImageX) / ed->ui.vpImageW;
         float localY = (mouse.y - ed->ui.vpImageY) / ed->ui.vpImageH;
