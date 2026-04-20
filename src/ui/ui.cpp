@@ -860,9 +860,9 @@ void ui_properties(Scene *s, Timeline *tl, EditorUI *ui) {
                 break;
             }
             case OBJ_LIGHT: {
-                const char *ltNames[] = { "Point", "Directional" };
+                const char *ltNames[] = { "Point", "Directional", "Spot" };
                 int lt = (int)obj->lightType;
-                if (ImGui::Combo("Type##light", &lt, ltNames, 2)) {
+                if (ImGui::Combo("Type##light", &lt, ltNames, 3)) {
                     obj->lightType = (LightType)lt;
                 }
                 float lc[3] = {
@@ -879,6 +879,12 @@ void ui_properties(Scene *s, Timeline *tl, EditorUI *ui) {
                     };
                 }
                 ImGui::DragFloat("Intensity", &obj->lightIntensity, 0.05f, 0.0f, 10.0f);
+                if (obj->lightType == LIGHT_SPOT) {
+                    ImGui::DragFloat("Inner Angle", &obj->spotInnerAngle, 0.5f, 1.0f, 89.0f);
+                    ImGui::DragFloat("Outer Angle", &obj->spotOuterAngle, 0.5f, 1.0f, 89.0f);
+                    if (obj->spotOuterAngle < obj->spotInnerAngle)
+                        obj->spotOuterAngle = obj->spotInnerAngle;
+                }
                 break;
             }
             case OBJ_MODEL_FILE:

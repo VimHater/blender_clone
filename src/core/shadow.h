@@ -15,6 +15,7 @@ struct ShadowMap {
 
 void shadowmap_init(ShadowMap *sm, int resolution);
 void shadowmap_begin(ShadowMap *sm, Vector3 lightPos, Vector3 lightDir, Vector3 sceneCenter, float sceneRadius);
+void shadowmap_begin_spot(ShadowMap *sm, Vector3 lightPos, Vector3 lightDir, float outerAngleDeg, float sceneRadius);
 void shadowmap_begin_point(ShadowMap *sm, Vector3 lightPos, Vector3 sceneCenter, float sceneRadius);
 void shadowmap_end(ShadowMap *sm);
 void shadowmap_unload(ShadowMap *sm);

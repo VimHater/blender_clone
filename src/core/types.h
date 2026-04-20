@@ -48,6 +48,7 @@ enum DrawMode {
 enum LightType {
     LIGHT_POINT,
     LIGHT_DIRECTIONAL,
+    LIGHT_SPOT,
 };
 
 enum ShaderType {
@@ -145,6 +146,8 @@ struct SceneObject {
     LightType lightType;
     Color lightColor;
     float lightIntensity;
+    float spotInnerAngle;   // degrees, full brightness cone
+    float spotOuterAngle;   // degrees, falloff to zero
 
     // loaded model (OBJ_MODEL_FILE)
     Model model;

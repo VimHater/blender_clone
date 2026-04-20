@@ -5,6 +5,14 @@
 #include <cstring>
 #include <cstdio>
 #include <cmath>
+
+// built-in texture data for reload
+#include "../builtin_textures/checkerboard.texture_array"
+#include "../builtin_textures/brick.texture_array"
+#include "../builtin_textures/sand.texture_array"
+#include "../builtin_textures/brushed_metal.texture_array"
+#include "../builtin_textures/wood.texture_array"
+#include "../builtin_textures/grass.texture_array"
 #ifdef _WIN32
 #include <direct.h>
 #define platform_getcwd _getcwd
@@ -133,6 +141,8 @@ SceneObject object_default(const char *name, ObjectType type) {
     obj.lightType = LIGHT_POINT;
     obj.lightColor = WHITE;
     obj.lightIntensity = 3.0f;
+    obj.spotInnerAngle = 20.0f;
+    obj.spotOuterAngle = 35.0f;
     obj.modelLoaded = false;
     obj.keyframeCount = 0;
     obj.usePhysics = false;
@@ -689,8 +699,6 @@ void scene_draw_selection(const Scene *s) {
 
 // ---- Gizmo ----
 
-static const float GIZMO_BASE_LENGTH = 1.4f;
-static const float GIZMO_MIN_LENGTH = 1.0f;
 
 // approximate bounding radius of an object (unscaled by gizmo, just object extent)
 static float object_radius(const SceneObject *obj) {
@@ -722,14 +730,12 @@ static float object_radius(const SceneObject *obj) {
     }
 }
 
-static float gizmo_length_for(const SceneObject *obj) {
-    float r = object_radius(obj);
-    float len = r * 0.7f + GIZMO_BASE_LENGTH;
-    if (len < GIZMO_MIN_LENGTH) len = GIZMO_MIN_LENGTH;
-    return len;
+static float gizmo_scale_for(Vector3 objPos, Vector3 camPos) {
+    float dist = Vector3Length(Vector3Subtract(objPos, camPos));
+    return dist * 0.15f;
 }
 
-void scene_draw_gizmo(const Scene *s, TransformMode mode, GizmoAxis activeAxis) {
+void scene_draw_gizmo(const Scene *s, TransformMode mode, GizmoAxis activeAxis, Vector3 cameraPos) {
     if (s->selectedCount == 0) return;
     // find first selected object
     const SceneObject *obj = nullptr;
@@ -738,9 +744,15 @@ void scene_draw_gizmo(const Scene *s, TransformMode mode, GizmoAxis activeAxis) 
     }
     if (!obj) return;
 
+    rlDrawRenderBatchActive();
+    rlDisableDepthTest();
+    rlDisableDepthMask();
+
     Vector3 p = obj->transform.position;
-    float len = gizmo_length_for(obj);
-    float t = len * 0.025f; // thickness scales with length
+    float scale = gizmo_scale_for(p, cameraPos);
+    float minLen = object_radius(obj) + 2.0f;
+    float len = scale > minLen ? scale : minLen;
+    float t = scale * 0.017f; // arrow size (1/3 of original)
 
     Color xCol = (activeAxis == GIZMO_X) ? YELLOW : RED;
     Color yCol = (activeAxis == GIZMO_Y) ? YELLOW : GREEN;
@@ -769,10 +781,28 @@ void scene_draw_gizmo(const Scene *s, TransformMode mode, GizmoAxis activeAxis) 
         DrawCylinder(Vector3{0,0,0}, 0.0f, coneR, coneH, 8, zCol);
         rlPopMatrix();
     } else if (mode == TMODE_ROTATE) {
+        float ringR = len * 0.8f;
+        float handleSize = t * 3;
         // draw circles for each axis
-        DrawCircle3D(p, len * 0.8f, Vector3{0, 1, 0}, 0, xCol);   // X rotation = around X = YZ plane
-        DrawCircle3D(p, len * 0.8f, Vector3{1, 0, 0}, 90, yCol);   // Y rotation
-        DrawCircle3D(p, len * 0.8f, Vector3{0, 0, 1}, 90, zCol);   // Z rotation
+        DrawCircle3D(p, ringR, Vector3{0, 1, 0}, 0, xCol);   // X rotation = around X = YZ plane
+        DrawCircle3D(p, ringR, Vector3{1, 0, 0}, 90, yCol);   // Y rotation
+        DrawCircle3D(p, ringR, Vector3{0, 0, 1}, 90, zCol);   // Z rotation
+        // grab handles at cardinal points on each ring
+        // X ring (YZ plane): handles at +Y, -Y, +Z, -Z
+        DrawSphere(Vector3{p.x, p.y + ringR, p.z}, handleSize, xCol);
+        DrawSphere(Vector3{p.x, p.y - ringR, p.z}, handleSize, xCol);
+        DrawSphere(Vector3{p.x, p.y, p.z + ringR}, handleSize, xCol);
+        DrawSphere(Vector3{p.x, p.y, p.z - ringR}, handleSize, xCol);
+        // Y ring (XZ plane): handles at +X, -X, +Z, -Z
+        DrawSphere(Vector3{p.x + ringR, p.y, p.z}, handleSize, yCol);
+        DrawSphere(Vector3{p.x - ringR, p.y, p.z}, handleSize, yCol);
+        DrawSphere(Vector3{p.x, p.y, p.z + ringR}, handleSize, yCol);
+        DrawSphere(Vector3{p.x, p.y, p.z - ringR}, handleSize, yCol);
+        // Z ring (XY plane): handles at +X, -X, +Y, -Y
+        DrawSphere(Vector3{p.x + ringR, p.y, p.z}, handleSize, zCol);
+        DrawSphere(Vector3{p.x - ringR, p.y, p.z}, handleSize, zCol);
+        DrawSphere(Vector3{p.x, p.y + ringR, p.z}, handleSize, zCol);
+        DrawSphere(Vector3{p.x, p.y - ringR, p.z}, handleSize, zCol);
     } else if (mode == TMODE_SCALE) {
         // axis lines with cubes at end
         DrawLine3D(p, Vector3{p.x + len, p.y, p.z}, xCol);
@@ -783,37 +813,86 @@ void scene_draw_gizmo(const Scene *s, TransformMode mode, GizmoAxis activeAxis) 
         DrawCube(Vector3{p.x, p.y + len, p.z}, cs, cs, cs, yCol);
         DrawCube(Vector3{p.x, p.y, p.z + len}, cs, cs, cs, zCol);
     }
+
+    rlDrawRenderBatchActive();
+    rlEnableDepthMask();
+    rlEnableDepthTest();
 }
 
-GizmoAxis gizmo_hit_test(const SceneObject *obj, Ray ray, TransformMode mode) {
-    Vector3 gizmoPos = obj->transform.position;
-    float len = gizmo_length_for(obj);
-    float r = len * 0.075f; // hit radius scales with length
-    (void)mode;
+// test if ray hits a ring (torus approximation): check if closest point on ray
+// to the center is near the ring radius, within tolerance
+static bool hit_ring(Ray ray, Vector3 center, Vector3 axis, float radius, float tolerance, float *outDist) {
+    // intersect ray with the plane defined by center+axis
+    float denom = ray.direction.x * axis.x + ray.direction.y * axis.y + ray.direction.z * axis.z;
+    if (fabsf(denom) < 0.0001f) return false;
+    Vector3 diff = Vector3Subtract(center, ray.position);
+    float t = (diff.x * axis.x + diff.y * axis.y + diff.z * axis.z) / denom;
+    if (t < 0) return false;
+    // point on plane
+    Vector3 pt = Vector3Add(ray.position, Vector3Scale(ray.direction, t));
+    float dist = Vector3Length(Vector3Subtract(pt, center));
+    if (fabsf(dist - radius) < tolerance) {
+        *outDist = t;
+        return true;
+    }
+    return false;
+}
 
-    // test each axis as a thin bounding box
-    BoundingBox xBox = {
-        Vector3{gizmoPos.x, gizmoPos.y - r, gizmoPos.z - r},
-        Vector3{gizmoPos.x + len, gizmoPos.y + r, gizmoPos.z + r}
-    };
-    BoundingBox yBox = {
-        Vector3{gizmoPos.x - r, gizmoPos.y, gizmoPos.z - r},
-        Vector3{gizmoPos.x + r, gizmoPos.y + len, gizmoPos.z + r}
-    };
-    BoundingBox zBox = {
-        Vector3{gizmoPos.x - r, gizmoPos.y - r, gizmoPos.z},
-        Vector3{gizmoPos.x + r, gizmoPos.y + r, gizmoPos.z + len}
-    };
+GizmoAxis gizmo_hit_test(const SceneObject *obj, Ray ray, TransformMode mode, Vector3 cameraPos) {
+    Vector3 gizmoPos = obj->transform.position;
+    float scale = gizmo_scale_for(gizmoPos, cameraPos);
+    float minLen = object_radius(obj) + 2.0f;
+    float len = scale > minLen ? scale : minLen;
+    float r = len * 0.06f;
 
     float bestDist = 1e30f;
     GizmoAxis best = GIZMO_NONE;
 
-    RayCollision col = GetRayCollisionBox(ray, xBox);
-    if (col.hit && col.distance < bestDist) { bestDist = col.distance; best = GIZMO_X; }
-    col = GetRayCollisionBox(ray, yBox);
-    if (col.hit && col.distance < bestDist) { bestDist = col.distance; best = GIZMO_Y; }
-    col = GetRayCollisionBox(ray, zBox);
-    if (col.hit && col.distance < bestDist) { bestDist = col.distance; best = GIZMO_Z; }
+    if (mode == TMODE_ROTATE) {
+        // hit test rings
+        float ringRadius = len * 0.8f;
+        float tolerance = len * 0.1f;
+        float dist;
+        if (hit_ring(ray, gizmoPos, Vector3{1, 0, 0}, ringRadius, tolerance, &dist) && dist < bestDist) {
+            bestDist = dist; best = GIZMO_X;
+        }
+        if (hit_ring(ray, gizmoPos, Vector3{0, 1, 0}, ringRadius, tolerance, &dist) && dist < bestDist) {
+            bestDist = dist; best = GIZMO_Y;
+        }
+        if (hit_ring(ray, gizmoPos, Vector3{0, 0, 1}, ringRadius, tolerance, &dist) && dist < bestDist) {
+            bestDist = dist; best = GIZMO_Z;
+        }
+    } else {
+        // hit test axis lines as thin boxes
+        BoundingBox xBox = {
+            Vector3{gizmoPos.x, gizmoPos.y - r, gizmoPos.z - r},
+            Vector3{gizmoPos.x + len, gizmoPos.y + r, gizmoPos.z + r}
+        };
+        BoundingBox yBox = {
+            Vector3{gizmoPos.x - r, gizmoPos.y, gizmoPos.z - r},
+            Vector3{gizmoPos.x + r, gizmoPos.y + len, gizmoPos.z + r}
+        };
+        BoundingBox zBox = {
+            Vector3{gizmoPos.x - r, gizmoPos.y - r, gizmoPos.z},
+            Vector3{gizmoPos.x + r, gizmoPos.y + r, gizmoPos.z + len}
+        };
+
+        RayCollision col = GetRayCollisionBox(ray, xBox);
+        if (col.hit && col.distance < bestDist) { bestDist = col.distance; best = GIZMO_X; }
+        col = GetRayCollisionBox(ray, yBox);
+        if (col.hit && col.distance < bestDist) { bestDist = col.distance; best = GIZMO_Y; }
+        col = GetRayCollisionBox(ray, zBox);
+        if (col.hit && col.distance < bestDist) { bestDist = col.distance; best = GIZMO_Z; }
+
+        // also hit test arrowhead/cube tips with larger sphere radius
+        float tipR = len * 0.12f;
+        col = GetRayCollisionSphere(ray, Vector3{gizmoPos.x + len, gizmoPos.y, gizmoPos.z}, tipR);
+        if (col.hit && col.distance < bestDist) { bestDist = col.distance; best = GIZMO_X; }
+        col = GetRayCollisionSphere(ray, Vector3{gizmoPos.x, gizmoPos.y + len, gizmoPos.z}, tipR);
+        if (col.hit && col.distance < bestDist) { bestDist = col.distance; best = GIZMO_Y; }
+        col = GetRayCollisionSphere(ray, Vector3{gizmoPos.x, gizmoPos.y, gizmoPos.z + len}, tipR);
+        if (col.hit && col.distance < bestDist) { bestDist = col.distance; best = GIZMO_Z; }
+    }
 
     return best;
 }
@@ -1024,6 +1103,30 @@ void object_clear_texture(SceneObject *obj) {
         obj->material.texture = Texture2D{0};
         obj->material.hasTexture = false;
         obj->material.texturePath[0] = '\0';
+    }
+}
+
+void object_reload_texture(SceneObject *obj) {
+    if (!obj->material.texturePath[0]) return;
+    const char *path = obj->material.texturePath;
+
+    // handle built-in textures
+    if (strncmp(path, "[built-in] ", 11) == 0) {
+        const char *name = path + 11;
+        if (strstr(name, "Checkerboard"))
+            object_set_texture_builtin(obj, "Checkerboard", CHECKERBOARD_PNG, CHECKERBOARD_PNG_LEN, ".png");
+        else if (strstr(name, "Brick"))
+            object_set_texture_builtin(obj, "Brick", BRICK_BMP, BRICK_BMP_LEN, ".bmp");
+        else if (strstr(name, "Sand"))
+            object_set_texture_builtin(obj, "Sand", SAND_PNG, SAND_PNG_LEN, ".png");
+        else if (strstr(name, "Brushed Metal"))
+            object_set_texture_builtin(obj, "Brushed Metal", BRUSHED_METAL_PNG, BRUSHED_METAL_PNG_LEN, ".png");
+        else if (strstr(name, "Wood"))
+            object_set_texture_builtin(obj, "Wood", WOOD_PNG, WOOD_PNG_LEN, ".png");
+        else if (strstr(name, "Grass"))
+            object_set_texture_builtin(obj, "Grass", GRASS_PNG, GRASS_PNG_LEN, ".png");
+    } else {
+        object_set_texture(obj, path);
     }
 }
 

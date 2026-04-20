@@ -62,6 +62,8 @@ struct ObjectData {
     int lightType;
     unsigned char lightR, lightG, lightB, lightA;
     float lightIntensity;
+    float spotInnerAngle;
+    float spotOuterAngle;
 
     // model path
     char modelPath[256];
@@ -143,6 +145,8 @@ static void obj_to_data(const SceneObject *obj, ObjectData *d) {
     d->lightR = obj->lightColor.r; d->lightG = obj->lightColor.g;
     d->lightB = obj->lightColor.b; d->lightA = obj->lightColor.a;
     d->lightIntensity = obj->lightIntensity;
+    d->spotInnerAngle = obj->spotInnerAngle;
+    d->spotOuterAngle = obj->spotOuterAngle;
     strncpy(d->modelPath, obj->modelPath, 256);
     d->scriptCount = obj->scriptCount;
     for (int s = 0; s < obj->scriptCount && s < MAX_SCRIPTS; s++)
@@ -185,6 +189,8 @@ static void data_to_obj(const ObjectData *d, SceneObject *obj) {
     obj->lightType = (LightType)d->lightType;
     obj->lightColor = {d->lightR, d->lightG, d->lightB, d->lightA};
     obj->lightIntensity = d->lightIntensity;
+    obj->spotInnerAngle = d->spotInnerAngle;
+    obj->spotOuterAngle = d->spotOuterAngle;
     strncpy(obj->modelPath, d->modelPath, 256);
     obj->scriptCount = d->scriptCount;
     for (int s = 0; s < d->scriptCount && s < MAX_SCRIPTS; s++)
@@ -313,8 +319,8 @@ bool load_binary(const char *path, EditorState *state) {
 
         // reload texture if it had one
         if (s->objects[i].material.hasTexture && s->objects[i].material.texturePath[0]) {
-            s->objects[i].material.hasTexture = false; // reset, let object_set_texture handle it
-            object_set_texture(&s->objects[i], s->objects[i].material.texturePath);
+            s->objects[i].material.hasTexture = false;
+            object_reload_texture(&s->objects[i]);
         }
 
         // reload model if it had one
@@ -452,6 +458,8 @@ bool save_text(const char *path, const EditorState *state) {
         fprintf(f, "light_type = %d\n", (int)obj->lightType);
         write_color(f, "light_color", obj->lightColor);
         fprintf(f, "light_intensity = %g\n", obj->lightIntensity);
+        fprintf(f, "spot_inner_angle = %g\n", obj->spotInnerAngle);
+        fprintf(f, "spot_outer_angle = %g\n", obj->spotOuterAngle);
 
         if (obj->type == OBJ_MODEL_FILE)
             fprintf(f, "model_path = %s\n", obj->modelPath);
@@ -657,6 +665,8 @@ bool load_text(const char *path, EditorState *state) {
             else if (strcmp(key, "light_type") == 0) obj->lightType = (LightType)atoi(val);
             else if (strcmp(key, "light_color") == 0) parse_color(val, &obj->lightColor);
             else if (strcmp(key, "light_intensity") == 0) obj->lightIntensity = (float)atof(val);
+            else if (strcmp(key, "spot_inner_angle") == 0) obj->spotInnerAngle = (float)atof(val);
+            else if (strcmp(key, "spot_outer_angle") == 0) obj->spotOuterAngle = (float)atof(val);
             else if (strcmp(key, "model_path") == 0) strncpy(obj->modelPath, val, 256);
             else if (strcmp(key, "script_count") == 0) obj->scriptCount = atoi(val);
             else if (strcmp(key, "script_path") == 0 && obj->scriptCount < MAX_SCRIPTS) {
@@ -733,7 +743,7 @@ bool load_text(const char *path, EditorState *state) {
         SceneObject *obj = &s->objects[i];
         if (obj->material.hasTexture && obj->material.texturePath[0]) {
             obj->material.hasTexture = false;
-            object_set_texture(obj, obj->material.texturePath);
+            object_reload_texture(obj);
         }
         if (obj->type == OBJ_MODEL_FILE && obj->modelPath[0]) {
             obj->model = LoadModel(obj->modelPath);

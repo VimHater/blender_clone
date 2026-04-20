@@ -41,8 +41,8 @@ Model     load_model_from_obj_data(const char *objData);
 
 // gizmo
 enum GizmoAxis { GIZMO_NONE = 0, GIZMO_X, GIZMO_Y, GIZMO_Z };
-void         scene_draw_gizmo(const Scene *s, TransformMode mode, GizmoAxis activeAxis);
-GizmoAxis    gizmo_hit_test(const SceneObject *obj, Ray ray, TransformMode mode);
+void         scene_draw_gizmo(const Scene *s, TransformMode mode, GizmoAxis activeAxis, Vector3 cameraPos);
+GizmoAxis    gizmo_hit_test(const SceneObject *obj, Ray ray, TransformMode mode, Vector3 cameraPos);
 
 // bounding box
 BoundingBox  scene_get_bounds(const Scene *s, int index);
@@ -52,5 +52,6 @@ Texture2D load_bitmap(const char *path);
 void      object_set_texture(SceneObject *obj, const char *path);
 void      object_set_texture_builtin(SceneObject *obj, const char *name, const unsigned char *data, unsigned int len, const char *fmt);
 void      object_clear_texture(SceneObject *obj);
+void      object_reload_texture(SceneObject *obj);
 
 #endif // CORE_SCENE_H

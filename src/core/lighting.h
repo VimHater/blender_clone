@@ -7,11 +7,13 @@
 #define MAX_SHADER_LIGHTS MAX_LIGHTS
 
 struct LightData {
-    int type;       // 0=point, 1=directional
+    int type;       // 0=point, 1=directional, 2=spot
     Vector3 position;
-    Vector3 direction;  // for directional lights
+    Vector3 direction;
     float color[3];
     float intensity;
+    float spotInnerCos;  // cos(innerAngle)
+    float spotOuterCos;  // cos(outerAngle)
 };
 
 struct LightingState {
@@ -22,7 +24,7 @@ struct LightingState {
     int lightCountLoc[SHADER_COUNT];
     int ambientLoc[SHADER_COUNT];
     int viewPosLoc[SHADER_COUNT];
-    int lightLocs[SHADER_COUNT][MAX_SHADER_LIGHTS][5]; // type, pos, dir, color, intensity
+    int lightLocs[SHADER_COUNT][MAX_SHADER_LIGHTS][7]; // type, pos, dir, color, intensity, spotInnerCos, spotOuterCos
 
     // shadow uniforms
     int lightSpaceMatrixLoc[SHADER_COUNT];

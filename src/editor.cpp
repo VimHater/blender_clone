@@ -497,7 +497,7 @@ void editor_update(Editor *ed) {
                     else if (ed->ui.gizmoActiveAxis == GIZMO_Z)
                         obj->transform.position.z = ed->ui.gizmoDragObjStart.z + delta;
                 } else if (ed->ui.transformMode == TMODE_ROTATE) {
-                    float delta = dx * 0.5f; // degrees per pixel
+                    float delta = (dx + dy) * 0.5f; // degrees per pixel, both axes
                     if (ed->ui.gizmoActiveAxis == GIZMO_X)
                         obj->transform.rotation.x = ed->ui.gizmoDragObjStart.x + delta;
                     else if (ed->ui.gizmoActiveAxis == GIZMO_Y)
@@ -538,7 +538,7 @@ void editor_update(Editor *ed) {
             SceneObject *sel = scene_first_selected(&ed->scene);
             if (sel) {
                 Ray ray = viewport_ray(mouse);
-                GizmoAxis axis = gizmo_hit_test(sel, ray, ed->ui.transformMode);
+                GizmoAxis axis = gizmo_hit_test(sel, ray, ed->ui.transformMode, ed->camera.cam.position);
                 if (axis != GIZMO_NONE) {
                     ed->ui.gizmoActiveAxis = axis;
                     ed->ui.gizmoDragging = true;
@@ -660,12 +660,24 @@ void editor_draw(Editor *ed) {
             }
         }
 
-        // only directional lights cast shadows
+        // directional and spot lights cast shadows
         for (int i = 0; i < ed->lighting.lightCount; i++) {
-            if (ed->lighting.lights[i].type == LIGHT_DIRECTIONAL) {
-                Vector3 pos = ed->lighting.lights[i].position;
-                Vector3 dir = ed->lighting.lights[i].direction;
-                shadowmap_begin(&ed->shadowMap, pos, dir, sceneCenter, sceneRadius);
+            LightData *ld = &ed->lighting.lights[i];
+            if (ld->type == LIGHT_DIRECTIONAL) {
+                shadowmap_begin(&ed->shadowMap, ld->position, ld->direction, sceneCenter, sceneRadius);
+                rlDisableBackfaceCulling();
+                BeginShaderMode(ed->shadowMap.depthShader);
+                scene_draw(&ed->scene, DRAW_SOLID, NULL);
+                EndShaderMode();
+                rlEnableBackfaceCulling();
+                shadowmap_end(&ed->shadowMap);
+                hasShadow = true;
+                shadowLightIdx = i;
+                break;
+            }
+            if (ld->type == LIGHT_SPOT) {
+                float outerDeg = acosf(ld->spotOuterCos) * RAD2DEG;
+                shadowmap_begin_spot(&ed->shadowMap, ld->position, ld->direction, outerDeg, sceneRadius);
                 rlDisableBackfaceCulling();
                 BeginShaderMode(ed->shadowMap.depthShader);
                 scene_draw(&ed->scene, DRAW_SOLID, NULL);
@@ -703,7 +715,7 @@ void editor_draw(Editor *ed) {
                 scene_draw(&ed->scene, ed->ui.drawMode, &ed->lighting);
                 if (showGizmos) {
                     scene_draw_selection(&ed->scene);
-                    scene_draw_gizmo(&ed->scene, ed->ui.transformMode, ed->ui.gizmoActiveAxis);
+                    scene_draw_gizmo(&ed->scene, ed->ui.transformMode, ed->ui.gizmoActiveAxis, activeCam.position);
                     if (ed->ui.placementMode && ed->ui.placementValid) {
                         scene_draw_preview(ed->ui.placementType, ed->ui.placementPos);
                     }

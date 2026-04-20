@@ -74,12 +74,15 @@ static const char *FS_DEFAULT =
     "#define MAX_LIGHTS 8\n"
     "#define LIGHT_POINT 0\n"
     "#define LIGHT_DIRECTIONAL 1\n"
+    "#define LIGHT_SPOT 2\n"
     "uniform int lightCount;\n"
     "uniform int lightType[MAX_LIGHTS];\n"
     "uniform vec3 lightPos[MAX_LIGHTS];\n"
     "uniform vec3 lightDir[MAX_LIGHTS];\n"
     "uniform vec3 lightColor[MAX_LIGHTS];\n"
     "uniform float lightIntensity[MAX_LIGHTS];\n"
+    "uniform float lightSpotInnerCos[MAX_LIGHTS];\n"
+    "uniform float lightSpotOuterCos[MAX_LIGHTS];\n"
     SHADOW_COMMON
     "out vec4 finalColor;\n"
     "void main() {\n"
@@ -100,6 +103,14 @@ static const char *FS_DEFAULT =
     "            float dist = length(lightVec);\n"
     "            attenuation = 1.0 / (1.0 + 0.09 * dist + 0.032 * dist * dist);\n"
     "            lightVec = normalize(lightVec);\n"
+    "        } else if (lightType[i] == LIGHT_SPOT) {\n"
+    "            lightVec = lightPos[i] - fragPosition;\n"
+    "            float dist = length(lightVec);\n"
+    "            lightVec = normalize(lightVec);\n"
+    "            float theta = dot(-lightVec, lightDir[i]);\n"
+    "            float epsilon = lightSpotInnerCos[i] - lightSpotOuterCos[i];\n"
+    "            float spotFade = clamp((theta - lightSpotOuterCos[i]) / max(epsilon, 0.001), 0.0, 1.0);\n"
+    "            attenuation = spotFade / (1.0 + 0.09 * dist + 0.032 * dist * dist);\n"
     "        } else {\n"
     "            lightVec = normalize(-lightDir[i]);\n"
     "            vec3 toFrag = fragPosition - lightPos[i];\n"
@@ -156,12 +167,15 @@ static const char *FS_TOON =
     "#define MAX_LIGHTS 8\n"
     "#define LIGHT_POINT 0\n"
     "#define LIGHT_DIRECTIONAL 1\n"
+    "#define LIGHT_SPOT 2\n"
     "uniform int lightCount;\n"
     "uniform int lightType[MAX_LIGHTS];\n"
     "uniform vec3 lightPos[MAX_LIGHTS];\n"
     "uniform vec3 lightDir[MAX_LIGHTS];\n"
     "uniform vec3 lightColor[MAX_LIGHTS];\n"
     "uniform float lightIntensity[MAX_LIGHTS];\n"
+    "uniform float lightSpotInnerCos[MAX_LIGHTS];\n"
+    "uniform float lightSpotOuterCos[MAX_LIGHTS];\n"
     SHADOW_COMMON
     "out vec4 finalColor;\n"
     "void main() {\n"
@@ -180,6 +194,14 @@ static const char *FS_TOON =
     "            float dist = length(lightVec);\n"
     "            attenuation = 1.0 / (1.0 + 0.09 * dist + 0.032 * dist * dist);\n"
     "            lightVec = normalize(lightVec);\n"
+    "        } else if (lightType[i] == LIGHT_SPOT) {\n"
+    "            lightVec = lightPos[i] - fragPosition;\n"
+    "            float dist = length(lightVec);\n"
+    "            lightVec = normalize(lightVec);\n"
+    "            float theta = dot(-lightVec, lightDir[i]);\n"
+    "            float epsilon = lightSpotInnerCos[i] - lightSpotOuterCos[i];\n"
+    "            float spotFade = clamp((theta - lightSpotOuterCos[i]) / max(epsilon, 0.001), 0.0, 1.0);\n"
+    "            attenuation = spotFade / (1.0 + 0.09 * dist + 0.032 * dist * dist);\n"
     "        } else {\n"
     "            lightVec = normalize(-lightDir[i]);\n"
     "            vec3 toFrag = fragPosition - lightPos[i];\n"
@@ -230,12 +252,15 @@ static const char *FS_FRESNEL =
     "#define MAX_LIGHTS 8\n"
     "#define LIGHT_POINT 0\n"
     "#define LIGHT_DIRECTIONAL 1\n"
+    "#define LIGHT_SPOT 2\n"
     "uniform int lightCount;\n"
     "uniform int lightType[MAX_LIGHTS];\n"
     "uniform vec3 lightPos[MAX_LIGHTS];\n"
     "uniform vec3 lightDir[MAX_LIGHTS];\n"
     "uniform vec3 lightColor[MAX_LIGHTS];\n"
     "uniform float lightIntensity[MAX_LIGHTS];\n"
+    "uniform float lightSpotInnerCos[MAX_LIGHTS];\n"
+    "uniform float lightSpotOuterCos[MAX_LIGHTS];\n"
     SHADOW_COMMON
     "out vec4 finalColor;\n"
     "void main() {\n"
@@ -254,6 +279,14 @@ static const char *FS_FRESNEL =
     "            float dist = length(lightVec);\n"
     "            attenuation = 1.0 / (1.0 + 0.09 * dist + 0.032 * dist * dist);\n"
     "            lightVec = normalize(lightVec);\n"
+    "        } else if (lightType[i] == LIGHT_SPOT) {\n"
+    "            lightVec = lightPos[i] - fragPosition;\n"
+    "            float dist = length(lightVec);\n"
+    "            lightVec = normalize(lightVec);\n"
+    "            float theta = dot(-lightVec, lightDir[i]);\n"
+    "            float epsilon = lightSpotInnerCos[i] - lightSpotOuterCos[i];\n"
+    "            float spotFade = clamp((theta - lightSpotOuterCos[i]) / max(epsilon, 0.001), 0.0, 1.0);\n"
+    "            attenuation = spotFade / (1.0 + 0.09 * dist + 0.032 * dist * dist);\n"
     "        } else {\n"
     "            lightVec = normalize(-lightDir[i]);\n"
     "            vec3 toFrag = fragPosition - lightPos[i];\n"
@@ -314,6 +347,10 @@ static void resolve_light_uniforms(LightingState *ls, int idx) {
         ls->lightLocs[idx][i][3] = GetShaderLocation(s, buf);
         snprintf(buf, sizeof(buf), "lightIntensity[%d]", i);
         ls->lightLocs[idx][i][4] = GetShaderLocation(s, buf);
+        snprintf(buf, sizeof(buf), "lightSpotInnerCos[%d]", i);
+        ls->lightLocs[idx][i][5] = GetShaderLocation(s, buf);
+        snprintf(buf, sizeof(buf), "lightSpotOuterCos[%d]", i);
+        ls->lightLocs[idx][i][6] = GetShaderLocation(s, buf);
     }
 }
 
@@ -375,6 +412,8 @@ void lighting_collect(LightingState *ls, const Scene *s) {
         ld->color[1] = obj->lightColor.g / 255.0f;
         ld->color[2] = obj->lightColor.b / 255.0f;
         ld->intensity = obj->lightIntensity;
+        ld->spotInnerCos = cosf(obj->spotInnerAngle * DEG2RAD);
+        ld->spotOuterCos = cosf(obj->spotOuterAngle * DEG2RAD);
         ls->lightCount++;
     }
 }
@@ -398,6 +437,8 @@ void lighting_update_shader(LightingState *ls, Vector3 cameraPos) {
             SetShaderValue(ls->shaders[s], ls->lightLocs[s][i][2], dir, SHADER_UNIFORM_VEC3);
             SetShaderValue(ls->shaders[s], ls->lightLocs[s][i][3], ld->color, SHADER_UNIFORM_VEC3);
             SetShaderValue(ls->shaders[s], ls->lightLocs[s][i][4], &ld->intensity, SHADER_UNIFORM_FLOAT);
+            SetShaderValue(ls->shaders[s], ls->lightLocs[s][i][5], &ld->spotInnerCos, SHADER_UNIFORM_FLOAT);
+            SetShaderValue(ls->shaders[s], ls->lightLocs[s][i][6], &ld->spotOuterCos, SHADER_UNIFORM_FLOAT);
         }
     }
 }

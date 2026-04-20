@@ -88,6 +88,34 @@ void shadowmap_begin(ShadowMap *sm, Vector3 lightPos, Vector3 lightDir, Vector3 
     rlSetMatrixProjection(lightProj);
 }
 
+void shadowmap_begin_spot(ShadowMap *sm, Vector3 lightPos, Vector3 lightDir, float outerAngleDeg, float sceneRadius) {
+    if (!sm->initialized) return;
+
+    Vector3 target = Vector3Add(lightPos, lightDir);
+    Vector3 up = (fabsf(lightDir.y) < 0.99f) ? Vector3{0, 1, 0} : Vector3{1, 0, 0};
+    Matrix lightView = MatrixLookAt(lightPos, target, up);
+
+    // perspective projection matching the spot cone
+    float fov = outerAngleDeg * 2.0f;
+    if (fov > 170.0f) fov = 170.0f;
+    float farPlane = sceneRadius * 4.0f;
+    Matrix lightProj = MatrixPerspective(fov * DEG2RAD, 1.0f, 0.1f, farPlane);
+
+    sm->lightSpaceMatrix = MatrixMultiply(lightView, lightProj);
+
+    Camera3D lightCam = {0};
+    lightCam.position = lightPos;
+    lightCam.target = target;
+    lightCam.up = up;
+    lightCam.fovy = fov;
+    lightCam.projection = CAMERA_PERSPECTIVE;
+
+    BeginTextureMode(sm->rt);
+    ClearBackground(WHITE);
+    BeginMode3D(lightCam);
+    rlSetMatrixProjection(lightProj);
+}
+
 void shadowmap_begin_point(ShadowMap *sm, Vector3 lightPos, Vector3 sceneCenter, float sceneRadius) {
     if (!sm->initialized) return;
 
