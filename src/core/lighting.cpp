@@ -38,18 +38,15 @@ static const char *VS_COMMON =
     "uniform int shadowIsPoint;\n" \
     "float calcShadow(vec3 worldPos, vec3 normal, vec3 lightDir) {\n" \
     "    if (hasShadow == 0) return 0.0;\n" \
-    "    vec4 lsPos = lightSpaceMatrix * vec4(worldPos, 1.0);\n" \
+    "    float NdotL = dot(normal, lightDir);\n" \
+    "    float normalOffsetScale = (1.0 - NdotL) * 0.05;\n" \
+    "    vec3 offsetPos = worldPos + normal * normalOffsetScale;\n" \
+    "    vec4 lsPos = lightSpaceMatrix * vec4(offsetPos, 1.0);\n" \
     "    if (abs(lsPos.w) < 0.001) return 0.0;\n" \
     "    vec3 projCoords = lsPos.xyz / lsPos.w;\n" \
     "    projCoords = projCoords * 0.5 + 0.5;\n" \
     "    if (projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 || projCoords.y < 0.0 || projCoords.y > 1.0) return 0.0;\n" \
-    "    float bias;\n" \
-    "    if (shadowIsPoint == 1) {\n" \
-    "        bias = max(0.02 * (1.0 - dot(normal, lightDir)), 0.005);\n" \
-    "        bias *= projCoords.z;\n" \
-    "    } else {\n" \
-    "        bias = max(0.005 * (1.0 - dot(normal, lightDir)), 0.001);\n" \
-    "    }\n" \
+    "    float bias = 0.001;\n" \
     "    float shadow = 0.0;\n" \
     "    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);\n" \
     "    for (int x = -1; x <= 1; x++) {\n" \
@@ -105,6 +102,8 @@ static const char *FS_DEFAULT =
     "            lightVec = normalize(lightVec);\n"
     "        } else {\n"
     "            lightVec = normalize(-lightDir[i]);\n"
+    "            vec3 toFrag = fragPosition - lightPos[i];\n"
+    "            if (dot(toFrag, lightDir[i]) < 0.0) continue;\n"
     "        }\n"
     "        float NdotL = max(dot(normal, lightVec), 0.0);\n"
     "        float specCo = 0.0;\n"
@@ -112,7 +111,6 @@ static const char *FS_DEFAULT =
     "            vec3 halfDir = normalize(lightVec + viewDir);\n"
     "            specCo = pow(max(dot(normal, halfDir), 0.0), 32.0);\n"
     "        }\n"
-    "        // shadow only for first directional light\n"
     "        float shadow = 0.0;\n"
     "        if (i == shadowLightIndex) {\n"
     "            shadow = calcShadow(fragPosition, normal, lightVec);\n"
@@ -184,6 +182,8 @@ static const char *FS_TOON =
     "            lightVec = normalize(lightVec);\n"
     "        } else {\n"
     "            lightVec = normalize(-lightDir[i]);\n"
+    "            vec3 toFrag = fragPosition - lightPos[i];\n"
+    "            if (dot(toFrag, lightDir[i]) < 0.0) continue;\n"
     "        }\n"
     "        float shadow = 0.0;\n"
     "        if (i == shadowLightIndex) {\n"
@@ -256,6 +256,8 @@ static const char *FS_FRESNEL =
     "            lightVec = normalize(lightVec);\n"
     "        } else {\n"
     "            lightVec = normalize(-lightDir[i]);\n"
+    "            vec3 toFrag = fragPosition - lightPos[i];\n"
+    "            if (dot(toFrag, lightDir[i]) < 0.0) continue;\n"
     "        }\n"
     "        float NdotL = max(dot(normal, lightVec), 0.0);\n"
     "        float shadow = 0.0;\n"
@@ -297,6 +299,8 @@ static void resolve_light_uniforms(LightingState *ls, int idx) {
     ls->hasShadowLoc[idx] = GetShaderLocation(s, "hasShadow");
     ls->shadowLightIndexLoc[idx] = GetShaderLocation(s, "shadowLightIndex");
     ls->shadowIsPointLoc[idx] = GetShaderLocation(s, "shadowIsPoint");
+    ls->shadowLightPosLoc[idx] = GetShaderLocation(s, "shadowLightPos");
+    ls->shadowViewDirLoc[idx] = GetShaderLocation(s, "shadowViewDir");
 
     char buf[64];
     for (int i = 0; i < MAX_SHADER_LIGHTS; i++) {
@@ -398,7 +402,7 @@ void lighting_update_shader(LightingState *ls, Vector3 cameraPos) {
     }
 }
 
-void lighting_bind_shadow(LightingState *ls, ShadowMap *sm, int shadowLightIndex, bool isPoint) {
+void lighting_bind_shadow(LightingState *ls, ShadowMap *sm, int shadowLightIndex, bool isPoint, Vector3 lightPos, Vector3 viewDir) {
     bool active = sm && sm->initialized;
     int flag = active ? 1 : 0;
     int pointFlag = isPoint ? 1 : 0;
@@ -409,6 +413,10 @@ void lighting_bind_shadow(LightingState *ls, ShadowMap *sm, int shadowLightIndex
         SetShaderValue(ls->shaders[s], ls->hasShadowLoc[s], &flag, SHADER_UNIFORM_INT);
         SetShaderValue(ls->shaders[s], ls->shadowLightIndexLoc[s], &shadowLightIndex, SHADER_UNIFORM_INT);
         SetShaderValue(ls->shaders[s], ls->shadowIsPointLoc[s], &pointFlag, SHADER_UNIFORM_INT);
+        float lp[3] = { lightPos.x, lightPos.y, lightPos.z };
+        float vd[3] = { viewDir.x, viewDir.y, viewDir.z };
+        SetShaderValue(ls->shaders[s], ls->shadowLightPosLoc[s], lp, SHADER_UNIFORM_VEC3);
+        SetShaderValue(ls->shaders[s], ls->shadowViewDirLoc[s], vd, SHADER_UNIFORM_VEC3);
 
         if (active) {
             int slot = 1;

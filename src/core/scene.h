@@ -44,6 +44,9 @@ enum GizmoAxis { GIZMO_NONE = 0, GIZMO_X, GIZMO_Y, GIZMO_Z };
 void         scene_draw_gizmo(const Scene *s, TransformMode mode, GizmoAxis activeAxis);
 GizmoAxis    gizmo_hit_test(const SceneObject *obj, Ray ray, TransformMode mode);
 
+// bounding box
+BoundingBox  scene_get_bounds(const Scene *s, int index);
+
 // texture helpers
 Texture2D load_bitmap(const char *path);
 void      object_set_texture(SceneObject *obj, const char *path);

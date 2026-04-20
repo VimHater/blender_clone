@@ -62,33 +62,29 @@ void shadowmap_init(ShadowMap *sm, int resolution) {
     printf("[SHADOW] Shadow map (%dx%d) initialized OK\n", resolution, resolution);
 }
 
-void shadowmap_begin(ShadowMap *sm, Vector3 lightDir, Vector3 sceneCenter, float sceneRadius) {
+void shadowmap_begin(ShadowMap *sm, Vector3 lightPos, Vector3 lightDir, Vector3 sceneCenter, float sceneRadius) {
     if (!sm->initialized) return;
 
-    // compute light view
-    Vector3 lightPos = Vector3Add(sceneCenter,
-        Vector3Scale(Vector3Negate(lightDir), sceneRadius * 2.0f));
+    Vector3 target = Vector3Add(lightPos, lightDir);
     Vector3 up = (fabsf(lightDir.y) < 0.99f) ? Vector3{0, 1, 0} : Vector3{1, 0, 0};
-    Matrix lightView = MatrixLookAt(lightPos, sceneCenter, up);
+    Matrix lightView = MatrixLookAt(lightPos, target, up);
 
     float extent = sceneRadius * 1.5f;
-    Matrix lightProj = MatrixOrtho(-extent, extent, -extent, extent, 0.1f, sceneRadius * 5.0f);
+    float farPlane = sceneRadius * 4.0f;
+    Matrix lightProj = MatrixOrtho(-extent, extent, -extent, extent, 0.1f, farPlane);
 
     sm->lightSpaceMatrix = MatrixMultiply(lightView, lightProj);
 
-    // build a Camera3D for the light
     Camera3D lightCam = {0};
     lightCam.position = lightPos;
-    lightCam.target = sceneCenter;
+    lightCam.target = target;
     lightCam.up = up;
-    lightCam.fovy = extent * 2.0f; // used as ortho height
+    lightCam.fovy = extent * 2.0f;
     lightCam.projection = CAMERA_ORTHOGRAPHIC;
 
     BeginTextureMode(sm->rt);
     ClearBackground(WHITE);
     BeginMode3D(lightCam);
-
-    // override projection with our exact ortho matrix
     rlSetMatrixProjection(lightProj);
 }
 
@@ -99,14 +95,16 @@ void shadowmap_begin_point(ShadowMap *sm, Vector3 lightPos, Vector3 sceneCenter,
     float len = Vector3Length(dir);
     if (len < 0.001f) return;
 
-    Vector3 up = (fabsf(dir.y / len) < 0.99f) ? Vector3{0, 1, 0} : Vector3{1, 0, 0};
+    // render from the light's actual position — objects behind the light
+    // are clipped by the near plane, preventing false shadows
+    Vector3 normDir = Vector3Scale(dir, 1.0f / len);
+    Vector3 up = (fabsf(normDir.y) < 0.99f) ? Vector3{0, 1, 0} : Vector3{1, 0, 0};
     Matrix lightView = MatrixLookAt(lightPos, sceneCenter, up);
 
-    // use orthographic projection centered on the scene so the entire scene
-    // is covered regardless of light position — no hard frustum cutoff
     float extent = sceneRadius * 1.5f;
-    float dist = len + sceneRadius * 2.0f;
-    Matrix lightProj = MatrixOrtho(-extent, extent, -extent, extent, 0.1f, dist);
+    float nearPlane = 0.1f;
+    float farPlane = len + sceneRadius * 2.0f;
+    Matrix lightProj = MatrixOrtho(-extent, extent, -extent, extent, nearPlane, farPlane);
 
     sm->lightSpaceMatrix = MatrixMultiply(lightView, lightProj);
 

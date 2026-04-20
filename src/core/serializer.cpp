@@ -461,6 +461,17 @@ bool save_text(const char *path, const EditorState *state) {
             fprintf(f, "script_path = %s\n", obj->scriptPaths[s]);
         }
 
+        // physics
+        if (obj->usePhysics) {
+            fprintf(f, "use_physics = 1\n");
+            fprintf(f, "is_static = %d\n", obj->isStatic ? 1 : 0);
+            fprintf(f, "mass = %g\n", obj->mass);
+            fprintf(f, "velocity = %g %g %g\n", obj->velocity.x, obj->velocity.y, obj->velocity.z);
+            fprintf(f, "use_gravity = %d\n", obj->useGravity ? 1 : 0);
+            fprintf(f, "restitution = %g\n", obj->restitution);
+            fprintf(f, "phys_friction = %g\n", obj->friction);
+        }
+
         fprintf(f, "keyframe_count = %d\n", obj->keyframeCount);
         for (int k = 0; k < obj->keyframeCount; k++) {
             const Keyframe *kf = &obj->keyframes[k];
@@ -654,6 +665,13 @@ bool load_text(const char *path, EditorState *state) {
                 for (si = 0; si < MAX_SCRIPTS; si++) { if (obj->scriptPaths[si][0] == '\0') break; }
                 if (si < MAX_SCRIPTS) strncpy(obj->scriptPaths[si], val, 256);
             }
+            else if (strcmp(key, "use_physics") == 0) obj->usePhysics = atoi(val) != 0;
+            else if (strcmp(key, "is_static") == 0) obj->isStatic = atoi(val) != 0;
+            else if (strcmp(key, "mass") == 0) obj->mass = (float)atof(val);
+            else if (strcmp(key, "velocity") == 0) parse_vec3(val, &obj->velocity);
+            else if (strcmp(key, "use_gravity") == 0) obj->useGravity = atoi(val) != 0;
+            else if (strcmp(key, "restitution") == 0) obj->restitution = (float)atof(val);
+            else if (strcmp(key, "phys_friction") == 0) obj->friction = (float)atof(val);
             else if (strcmp(key, "keyframe_count") == 0) { obj->keyframeCount = atoi(val); kfIdx = 0; }
             else if (strcmp(key, "keyframe") == 0 && kfIdx < MAX_KEYFRAMES) {
                 Keyframe *kf = &obj->keyframes[kfIdx++];

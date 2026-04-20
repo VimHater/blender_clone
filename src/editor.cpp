@@ -57,7 +57,7 @@ void editor_init(Editor *ed, int screenW, int screenH) {
     ed->lastKeyframeFrame = ed->timeline.currentFrame;
     script_init(&ed->scripting, &ed->scene, &ed->timeline);
     ui_init(&ed->ui, screenW, screenH);
-    shadowmap_init(&ed->shadowMap, 4096);
+    shadowmap_init(&ed->shadowMap, 8192);
 
     // store font path — try ../font/ first (build/), then ../../font/ (build/Debug/)
     {
@@ -201,6 +201,7 @@ static void editor_snapshot(Editor *ed) {
         ed->snapshot[i].transform = ed->scene.objects[i].transform;
         ed->snapshot[i].color = ed->scene.objects[i].material.color;
         ed->snapshot[i].visible = ed->scene.objects[i].visible;
+        ed->snapshot[i].velocity = ed->scene.objects[i].velocity;
     }
 }
 
@@ -209,6 +210,7 @@ static void editor_restore(Editor *ed) {
         ed->scene.objects[i].transform = ed->snapshot[i].transform;
         ed->scene.objects[i].material.color = ed->snapshot[i].color;
         ed->scene.objects[i].visible = ed->snapshot[i].visible;
+        ed->scene.objects[i].velocity = ed->snapshot[i].velocity;
     }
 }
 
@@ -251,6 +253,8 @@ void editor_update(Editor *ed) {
             snprintf(ed->ui.errorMessage, sizeof(ed->ui.errorMessage),
                      "Failed to load: %s", ed->ui.loadPath);
             ed->ui.showErrorPopup = true;
+        } else {
+            snprintf(ed->ui.currentFilePath, sizeof(ed->ui.currentFilePath), "%s", ed->ui.loadPath);
         }
     }
 
@@ -272,6 +276,7 @@ void editor_update(Editor *ed) {
 
     // animation (only in play mode and not paused)
     if (ed->playMode && !ed->ui.paused) {
+        float dt = GetFrameTime();
         timeline_update(&ed->timeline);
 
         // apply keyframe animation
@@ -286,8 +291,11 @@ void editor_update(Editor *ed) {
             }
         }
 
+        // physics step
+        physics_step(&ed->scene, dt);
+
         // Lua scripting update
-        script_update(&ed->scripting, GetFrameTime());
+        script_update(&ed->scripting, dt);
 
         // check if animation reached end of duration
         if (ed->timeline.endFrame < 999999 && !ed->ui.repeatPlayback) {
@@ -325,9 +333,20 @@ void editor_update(Editor *ed) {
     if (ed->ui.wantSave) {
         ed->ui.wantSave = false;
         char savePath[768];
-        const char *appDir = GetApplicationDirectory();
-        snprintf(savePath, sizeof(savePath), "%s%s", appDir, ed->ui.saveAsName);
+        if (ed->ui.currentFilePath[0]) {
+            // absolute path or path set by Open/Save As
+            if (ed->ui.currentFilePath[0] == '/') {
+                snprintf(savePath, sizeof(savePath), "%s", ed->ui.currentFilePath);
+            } else {
+                const char *appDir = GetApplicationDirectory();
+                snprintf(savePath, sizeof(savePath), "%s%s", appDir, ed->ui.currentFilePath);
+            }
+        } else {
+            const char *appDir = GetApplicationDirectory();
+            snprintf(savePath, sizeof(savePath), "%s%s", appDir, ed->ui.saveAsName);
+        }
         if (editor_save(ed, savePath)) {
+            snprintf(ed->ui.currentFilePath, sizeof(ed->ui.currentFilePath), "%s", savePath);
             snprintf(ed->ui.errorMessage, sizeof(ed->ui.errorMessage), "Saved to %s", savePath);
         } else {
             snprintf(ed->ui.errorMessage, sizeof(ed->ui.errorMessage), "Failed to save!");
@@ -605,6 +624,8 @@ void editor_draw(Editor *ed) {
     bool hasShadow = false;
     bool shadowIsPoint = false;
     int shadowLightIdx = 0;
+    Vector3 shadowLightPos = {0};
+    Vector3 shadowViewDir = {0};
     if (ed->shadowMap.initialized) {
         // compute scene bounds from all geometry objects
         Vector3 sceneCenter = {0, 0, 0};
@@ -617,13 +638,13 @@ void editor_draw(Editor *ed) {
                 const SceneObject *obj = &ed->scene.objects[i];
                 if (!obj->active || !obj->visible) continue;
                 if (obj->type == OBJ_LIGHT || obj->type == OBJ_CAMERA) continue;
-                Vector3 p = obj->transform.position;
-                if (p.x < bmin.x) bmin.x = p.x;
-                if (p.y < bmin.y) bmin.y = p.y;
-                if (p.z < bmin.z) bmin.z = p.z;
-                if (p.x > bmax.x) bmax.x = p.x;
-                if (p.y > bmax.y) bmax.y = p.y;
-                if (p.z > bmax.z) bmax.z = p.z;
+                BoundingBox bb = scene_get_bounds(&ed->scene, i);
+                if (bb.min.x < bmin.x) bmin.x = bb.min.x;
+                if (bb.min.y < bmin.y) bmin.y = bb.min.y;
+                if (bb.min.z < bmin.z) bmin.z = bb.min.z;
+                if (bb.max.x > bmax.x) bmax.x = bb.max.x;
+                if (bb.max.y > bmax.y) bmax.y = bb.max.y;
+                if (bb.max.z > bmax.z) bmax.z = bb.max.z;
                 geomCount++;
             }
             if (geomCount > 0) {
@@ -639,11 +660,12 @@ void editor_draw(Editor *ed) {
             }
         }
 
-        // prefer directional lights, fall back to point lights
+        // only directional lights cast shadows
         for (int i = 0; i < ed->lighting.lightCount; i++) {
             if (ed->lighting.lights[i].type == LIGHT_DIRECTIONAL) {
+                Vector3 pos = ed->lighting.lights[i].position;
                 Vector3 dir = ed->lighting.lights[i].direction;
-                shadowmap_begin(&ed->shadowMap, dir, sceneCenter, sceneRadius);
+                shadowmap_begin(&ed->shadowMap, pos, dir, sceneCenter, sceneRadius);
                 rlDisableBackfaceCulling();
                 BeginShaderMode(ed->shadowMap.depthShader);
                 scene_draw(&ed->scene, DRAW_SOLID, NULL);
@@ -655,25 +677,8 @@ void editor_draw(Editor *ed) {
                 break;
             }
         }
-        if (!hasShadow) {
-            for (int i = 0; i < ed->lighting.lightCount; i++) {
-                if (ed->lighting.lights[i].type == LIGHT_POINT) {
-                    Vector3 pos = ed->lighting.lights[i].position;
-                    shadowmap_begin_point(&ed->shadowMap, pos, sceneCenter, sceneRadius);
-                    rlDisableBackfaceCulling();
-                    BeginShaderMode(ed->shadowMap.depthShader);
-                    scene_draw(&ed->scene, DRAW_SOLID, NULL);
-                    EndShaderMode();
-                    rlEnableBackfaceCulling();
-                    shadowmap_end(&ed->shadowMap);
-                    hasShadow = true;
-                    shadowLightIdx = i;
-                    break;
-                }
-            }
-        }
     }
-    lighting_bind_shadow(&ed->lighting, hasShadow ? &ed->shadowMap : NULL, shadowLightIdx, shadowIsPoint);
+    lighting_bind_shadow(&ed->lighting, hasShadow ? &ed->shadowMap : NULL, shadowLightIdx, shadowIsPoint, shadowLightPos, shadowViewDir);
 
     // helper lambda: render 3D scene into a given render texture
     auto renderScene = [&](RenderTexture2D rt, bool showGizmos) {
@@ -715,6 +720,7 @@ void editor_draw(Editor *ed) {
             animState[i].transform = ed->scene.objects[i].transform;
             animState[i].color = ed->scene.objects[i].material.color;
             animState[i].visible = ed->scene.objects[i].visible;
+            animState[i].velocity = ed->scene.objects[i].velocity;
         }
 
         // render edit viewport with snapshot (original) transforms
@@ -726,6 +732,7 @@ void editor_draw(Editor *ed) {
             ed->scene.objects[i].transform = animState[i].transform;
             ed->scene.objects[i].material.color = animState[i].color;
             ed->scene.objects[i].visible = animState[i].visible;
+            ed->scene.objects[i].velocity = animState[i].velocity;
         }
         renderScene(ed->ui.animViewportRT, false);
     } else {

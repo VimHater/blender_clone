@@ -8,6 +8,7 @@
 #include <core/raycast.h>
 #include <core/lighting.h>
 #include <core/scripting.h>
+#include <core/physics.h>
 #include <ui/ui.h>
 
 struct Editor {

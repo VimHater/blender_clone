@@ -159,12 +159,22 @@ struct SceneObject {
     #define MAX_SCRIPTS 8
     char scriptPaths[MAX_SCRIPTS][256];
     int scriptCount;
+
+    // physics
+    bool usePhysics;
+    bool isStatic;
+    float mass;
+    Vector3 velocity;
+    bool useGravity;
+    float restitution;   // bounciness 0-1
+    float friction;       // 0-1
 };
 
 struct ObjectSnapshot {
     ObjectTransform transform;
     Color color;
     bool visible;
+    Vector3 velocity;
 };
 
 SceneObject object_default(const char *name, ObjectType type);

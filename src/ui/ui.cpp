@@ -8,7 +8,6 @@
 #ifdef _WIN32
 #include <io.h>    // _findfirst/_findnext (no Win32 API conflicts with raylib)
 #else
-#include <dirent.h>
 #endif
 
 #ifdef _WIN32
@@ -124,6 +123,7 @@ void ui_init(EditorUI *ui, int vpW, int vpH) {
     ui->wantSave = false;
     ui->showSaveAsPopup = false;
     strncpy(ui->saveAsName, "project.scene", sizeof(ui->saveAsName));
+    ui->currentFilePath[0] = '\0';
     ui->showErrorPopup = false;
     ui->errorMessage[0] = '\0';
     ui->gizmoActiveAxis = GIZMO_NONE;
@@ -241,6 +241,8 @@ void ui_save_as_popup(EditorUI *ui) {
         }
         ImGui::Separator();
         if (ImGui::Button("Save", ImVec2(120, 0)) || enter) {
+            // Save As: use the entered name as the new current file path
+            snprintf(ui->currentFilePath, sizeof(ui->currentFilePath), "%s", ui->saveAsName);
             ui->wantSave = true;
             ImGui::CloseCurrentPopup();
         }
@@ -347,48 +349,6 @@ void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui) {
         ImGui::Separator();
 
         if (ImGui::BeginMenu("File")) {
-            if (ImGui::BeginMenu("Examples")) {
-                bool found = false;
-#ifdef _WIN32
-                struct _finddata_t fd;
-                intptr_t hFind = _findfirst("examples\\*.scene", &fd);
-                if (hFind != -1) {
-                    do {
-                        const char *name = fd.name;
-                        size_t len = strlen(name);
-                        char label[256];
-                        snprintf(label, sizeof(label), "%.*s", (int)(len - 6), name);
-                        if (ImGui::MenuItem(label)) {
-                            snprintf(ui->loadPath, sizeof(ui->loadPath), "examples/%s", name);
-                            ui->wantLoad = true;
-                        }
-                        found = true;
-                    } while (_findnext(hFind, &fd) == 0);
-                    _findclose(hFind);
-                }
-#else
-                DIR *dir = opendir("examples");
-                if (dir) {
-                    struct dirent *ent;
-                    while ((ent = readdir(dir)) != nullptr) {
-                        const char *name = ent->d_name;
-                        size_t len = strlen(name);
-                        if (len > 6 && strcmp(name + len - 6, ".scene") == 0) {
-                            char label[256];
-                            snprintf(label, sizeof(label), "%.*s", (int)(len - 6), name);
-                            if (ImGui::MenuItem(label)) {
-                                snprintf(ui->loadPath, sizeof(ui->loadPath), "examples/%s", name);
-                                ui->wantLoad = true;
-                            }
-                            found = true;
-                        }
-                    }
-                    closedir(dir);
-                }
-#endif
-                if (!found) ImGui::TextDisabled("No examples found");
-                ImGui::EndMenu();
-            }
             if (ImGui::MenuItem("Open...", "Ctrl+O")) {
                 char const *filters[] = {"*.scene", "*.sceneb"};
                 char const *result = open_file_dialog(

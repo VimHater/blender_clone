@@ -63,6 +63,7 @@ struct EditorUI {
     bool repeatPlayback;  // loop animation at end of duration
     bool showSaveAsPopup; // File > Save As popup
     char saveAsName[256]; // filename input buffer
+    char currentFilePath[512]; // path of currently open file (for Save)
 
     // error popup
     bool showErrorPopup;

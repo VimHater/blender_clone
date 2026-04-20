@@ -1,7 +1,9 @@
 #include "scripting.h"
+#include "scene.h"
 #include <cstdio>
 #include <cstring>
 #include <cstdarg>
+#include <cmath>
 
 extern "C" {
 #include <lua.h>
@@ -195,6 +197,151 @@ static int l_get_object_count(lua_State *L) {
     return 1;
 }
 
+// ---- Physics API ----
+
+// set_velocity(name, vx, vy, vz)
+static int l_set_velocity(lua_State *L) {
+    ScriptState *ss = get_ss(L);
+    SceneObject *obj = find_object(ss->scene, L, 1);
+    if (!obj) return luaL_error(L, "object not found");
+    obj->velocity.x = (float)luaL_checknumber(L, 2);
+    obj->velocity.y = (float)luaL_checknumber(L, 3);
+    obj->velocity.z = (float)luaL_checknumber(L, 4);
+    return 0;
+}
+
+// get_velocity(name) -> vx, vy, vz
+static int l_get_velocity(lua_State *L) {
+    ScriptState *ss = get_ss(L);
+    SceneObject *obj = find_object(ss->scene, L, 1);
+    if (!obj) return luaL_error(L, "object not found");
+    lua_pushnumber(L, obj->velocity.x);
+    lua_pushnumber(L, obj->velocity.y);
+    lua_pushnumber(L, obj->velocity.z);
+    return 3;
+}
+
+// add_force(name, fx, fy, fz) — impulse: changes velocity by force/mass
+static int l_add_force(lua_State *L) {
+    ScriptState *ss = get_ss(L);
+    SceneObject *obj = find_object(ss->scene, L, 1);
+    if (!obj) return luaL_error(L, "object not found");
+    float invMass = (obj->mass > 0) ? 1.0f / obj->mass : 1.0f;
+    obj->velocity.x += (float)luaL_checknumber(L, 2) * invMass;
+    obj->velocity.y += (float)luaL_checknumber(L, 3) * invMass;
+    obj->velocity.z += (float)luaL_checknumber(L, 4) * invMass;
+    return 0;
+}
+
+// set_gravity(name, enabled)
+static int l_set_gravity(lua_State *L) {
+    ScriptState *ss = get_ss(L);
+    SceneObject *obj = find_object(ss->scene, L, 1);
+    if (!obj) return luaL_error(L, "object not found");
+    obj->useGravity = lua_toboolean(L, 2);
+    return 0;
+}
+
+// set_physics(name, enabled)
+static int l_set_physics(lua_State *L) {
+    ScriptState *ss = get_ss(L);
+    SceneObject *obj = find_object(ss->scene, L, 1);
+    if (!obj) return luaL_error(L, "object not found");
+    obj->usePhysics = lua_toboolean(L, 2);
+    return 0;
+}
+
+// set_static(name, enabled)
+static int l_set_static(lua_State *L) {
+    ScriptState *ss = get_ss(L);
+    SceneObject *obj = find_object(ss->scene, L, 1);
+    if (!obj) return luaL_error(L, "object not found");
+    obj->isStatic = lua_toboolean(L, 2);
+    return 0;
+}
+
+// set_mass(name, mass)
+static int l_set_mass(lua_State *L) {
+    ScriptState *ss = get_ss(L);
+    SceneObject *obj = find_object(ss->scene, L, 1);
+    if (!obj) return luaL_error(L, "object not found");
+    obj->mass = (float)luaL_checknumber(L, 2);
+    if (obj->mass < 0.001f) obj->mass = 0.001f;
+    return 0;
+}
+
+// set_restitution(name, value)
+static int l_set_restitution(lua_State *L) {
+    ScriptState *ss = get_ss(L);
+    SceneObject *obj = find_object(ss->scene, L, 1);
+    if (!obj) return luaL_error(L, "object not found");
+    obj->restitution = (float)luaL_checknumber(L, 2);
+    return 0;
+}
+
+// raycast(ox, oy, oz, dx, dy, dz) -> hit, name, x, y, z, nx, ny, nz
+static int l_raycast(lua_State *L) {
+    ScriptState *ss = get_ss(L);
+    Ray ray;
+    ray.position.x = (float)luaL_checknumber(L, 1);
+    ray.position.y = (float)luaL_checknumber(L, 2);
+    ray.position.z = (float)luaL_checknumber(L, 3);
+    ray.direction.x = (float)luaL_checknumber(L, 4);
+    ray.direction.y = (float)luaL_checknumber(L, 5);
+    ray.direction.z = (float)luaL_checknumber(L, 6);
+    // normalize direction
+    float len = sqrtf(ray.direction.x*ray.direction.x + ray.direction.y*ray.direction.y + ray.direction.z*ray.direction.z);
+    if (len > 0) { ray.direction.x /= len; ray.direction.y /= len; ray.direction.z /= len; }
+
+    float closestDist = 1e9f;
+    int closestIdx = -1;
+    RayCollision closestHit = {0};
+
+    for (int i = 0; i < ss->scene->objectCount; i++) {
+        SceneObject *obj = &ss->scene->objects[i];
+        if (!obj->active || !obj->visible) continue;
+        if (obj->type == OBJ_CAMERA || obj->type == OBJ_LIGHT) continue;
+
+        BoundingBox bb = scene_get_bounds(ss->scene, i);
+        RayCollision hit = GetRayCollisionBox(ray, bb);
+        if (hit.hit && hit.distance < closestDist) {
+            closestDist = hit.distance;
+            closestIdx = i;
+            closestHit = hit;
+        }
+    }
+
+    if (closestIdx < 0) {
+        lua_pushboolean(L, false);
+        return 1;
+    }
+
+    lua_pushboolean(L, true);
+    lua_pushstring(L, ss->scene->objects[closestIdx].name);
+    lua_pushnumber(L, closestHit.point.x);
+    lua_pushnumber(L, closestHit.point.y);
+    lua_pushnumber(L, closestHit.point.z);
+    lua_pushnumber(L, closestHit.normal.x);
+    lua_pushnumber(L, closestHit.normal.y);
+    lua_pushnumber(L, closestHit.normal.z);
+    return 8;
+}
+
+// check_collision(name1, name2) -> bool
+static int l_check_collision(lua_State *L) {
+    ScriptState *ss = get_ss(L);
+    SceneObject *a = find_object(ss->scene, L, 1);
+    SceneObject *b = find_object(ss->scene, L, 2);
+    if (!a || !b) { lua_pushboolean(L, false); return 1; }
+
+    int idxA = (int)(a - ss->scene->objects);
+    int idxB = (int)(b - ss->scene->objects);
+    BoundingBox bbA = scene_get_bounds(ss->scene, idxA);
+    BoundingBox bbB = scene_get_bounds(ss->scene, idxB);
+    lua_pushboolean(L, CheckCollisionBoxes(bbA, bbB));
+    return 1;
+}
+
 // ---- Registration ----
 
 static const luaL_Reg api_funcs[] = {
@@ -209,6 +356,16 @@ static const luaL_Reg api_funcs[] = {
     {"set_visible",     l_set_visible},
     {"list_objects",    l_list_objects},
     {"get_object_count", l_get_object_count},
+    {"set_velocity",    l_set_velocity},
+    {"get_velocity",    l_get_velocity},
+    {"add_force",       l_add_force},
+    {"set_gravity",     l_set_gravity},
+    {"set_physics",     l_set_physics},
+    {"set_static",      l_set_static},
+    {"set_mass",        l_set_mass},
+    {"set_restitution", l_set_restitution},
+    {"raycast",         l_raycast},
+    {"check_collision", l_check_collision},
     {NULL, NULL}
 };
 
@@ -269,6 +426,18 @@ void script_init(ScriptState *ss, Scene *scene, Timeline *timeline) {
         "  print('set_visible(name, bool)')\n"
         "  print('list_objects() -> table')\n"
         "  print('get_object_count() -> int')\n"
+        "  print('')\n"
+        "  print('--- Physics ---')\n"
+        "  print('set_velocity(name, vx, vy, vz)')\n"
+        "  print('get_velocity(name) -> vx, vy, vz')\n"
+        "  print('add_force(name, fx, fy, fz)')\n"
+        "  print('set_physics(name, bool)')\n"
+        "  print('set_static(name, bool)')\n"
+        "  print('set_gravity(name, bool)')\n"
+        "  print('set_mass(name, mass)')\n"
+        "  print('set_restitution(name, value)')\n"
+        "  print('raycast(ox,oy,oz, dx,dy,dz) -> hit,name,x,y,z,nx,ny,nz')\n"
+        "  print('check_collision(name1, name2) -> bool')\n"
         "  print('')\n"
         "  print('--- Animation ---')\n"
         "  print('Define: function animate(t, dt)')\n"

@@ -44,11 +44,12 @@ void editor_camera_update(EditorCamera *ec, bool inputAllowed) {
         EnableCursor();
     }
 
-    // Alt held: FPS-style mouse look
+    // Alt held: FPS-style mouse look (lower sensitivity for raw input)
     if (altHeld) {
         Vector2 delta = GetMouseDelta();
-        ec->yaw   += delta.x * ec->orbitSpeed;
-        ec->pitch += delta.y * ec->orbitSpeed;
+        float lookSpeed = ec->orbitSpeed * 0.3f;
+        ec->yaw   += delta.x * lookSpeed;
+        ec->pitch += delta.y * lookSpeed;
         if (ec->pitch > 1.5f) ec->pitch = 1.5f;
         if (ec->pitch < -1.5f) ec->pitch = -1.5f;
     }

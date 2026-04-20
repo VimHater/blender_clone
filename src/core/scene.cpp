@@ -135,6 +135,13 @@ SceneObject object_default(const char *name, ObjectType type) {
     obj.lightIntensity = 3.0f;
     obj.modelLoaded = false;
     obj.keyframeCount = 0;
+    obj.usePhysics = false;
+    obj.isStatic = false;
+    obj.mass = 1.0f;
+    obj.velocity = {0, 0, 0};
+    obj.useGravity = true;
+    obj.restitution = 0.3f;
+    obj.friction = 0.5f;
 
     if (type == OBJ_KNOT) {
         obj.torusRadius = 1.8f;
@@ -1018,4 +1025,82 @@ void object_clear_texture(SceneObject *obj) {
         obj->material.hasTexture = false;
         obj->material.texturePath[0] = '\0';
     }
+}
+
+BoundingBox scene_get_bounds(const Scene *s, int index) {
+    const SceneObject *obj = &s->objects[index];
+    Vector3 p = obj->transform.position;
+    Vector3 sc = obj->transform.scale;
+    float hw, hh, hd, r;
+    BoundingBox bb;
+
+    switch (obj->type) {
+        case OBJ_CUBE:
+            hw = obj->cubeSize[0] * sc.x * 0.5f;
+            hh = obj->cubeSize[1] * sc.y * 0.5f;
+            hd = obj->cubeSize[2] * sc.z * 0.5f;
+            bb.min = {p.x - hw, p.y - hh, p.z - hd};
+            bb.max = {p.x + hw, p.y + hh, p.z + hd};
+            break;
+        case OBJ_SPHERE:
+            r = obj->sphereRadius * fmaxf(sc.x, fmaxf(sc.y, sc.z));
+            bb.min = {p.x - r, p.y - r, p.z - r};
+            bb.max = {p.x + r, p.y + r, p.z + r};
+            break;
+        case OBJ_PLANE:
+            hw = obj->cubeSize[0] * sc.x * 0.5f;
+            hd = obj->cubeSize[2] * sc.z * 0.5f;
+            bb.min = {p.x - hw, p.y - 0.01f, p.z - hd};
+            bb.max = {p.x + hw, p.y + 0.01f, p.z + hd};
+            break;
+        case OBJ_CYLINDER:
+            r = fmaxf(obj->cylinderRadiusTop, obj->cylinderRadiusBottom) * fmaxf(sc.x, sc.z);
+            hh = obj->cylinderHeight * sc.y * 0.5f;
+            bb.min = {p.x - r, p.y - hh, p.z - r};
+            bb.max = {p.x + r, p.y + hh, p.z + r};
+            break;
+        case OBJ_CONE:
+            r = obj->coneRadius * fmaxf(sc.x, sc.z);
+            hh = obj->coneHeight * sc.y * 0.5f;
+            bb.min = {p.x - r, p.y - hh, p.z - r};
+            bb.max = {p.x + r, p.y + hh, p.z + r};
+            break;
+        case OBJ_TORUS:
+        case OBJ_KNOT:
+            r = (obj->torusSize + obj->torusRadius) * fmaxf(sc.x, fmaxf(sc.y, sc.z));
+            bb.min = {p.x - r, p.y - r, p.z - r};
+            bb.max = {p.x + r, p.y + r, p.z + r};
+            break;
+        case OBJ_CAPSULE:
+            r = obj->capsuleRadius * fmaxf(sc.x, sc.z);
+            hh = (obj->capsuleHeight * 0.5f + obj->capsuleRadius) * sc.y;
+            bb.min = {p.x - r, p.y - hh, p.z - r};
+            bb.max = {p.x + r, p.y + hh, p.z + r};
+            break;
+        case OBJ_POLY:
+            r = obj->polyRadius * fmaxf(sc.x, sc.z);
+            bb.min = {p.x - r, p.y - 0.01f, p.z - r};
+            bb.max = {p.x + r, p.y + 0.01f, p.z + r};
+            break;
+        case OBJ_CAMERA:
+            bb.min = {p.x - 0.3f, p.y - 0.3f, p.z - 0.8f};
+            bb.max = {p.x + 0.3f, p.y + 0.3f, p.z + 0.3f};
+            break;
+        case OBJ_TEAPOT:
+        case OBJ_MODEL_FILE:
+            if (obj->modelLoaded) {
+                BoundingBox mbb = GetModelBoundingBox(obj->model);
+                bb.min = {p.x + mbb.min.x * sc.x, p.y + mbb.min.y * sc.y, p.z + mbb.min.z * sc.z};
+                bb.max = {p.x + mbb.max.x * sc.x, p.y + mbb.max.y * sc.y, p.z + mbb.max.z * sc.z};
+            } else {
+                bb.min = {p.x - sc.x, p.y - sc.y, p.z - sc.z};
+                bb.max = {p.x + sc.x, p.y + sc.y, p.z + sc.z};
+            }
+            break;
+        default:
+            bb.min = {p.x - sc.x, p.y - sc.y, p.z - sc.z};
+            bb.max = {p.x + sc.x, p.y + sc.y, p.z + sc.z};
+            break;
+    }
+    return bb;
 }
