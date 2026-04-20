@@ -142,7 +142,7 @@ SceneObject object_default(const char *name, ObjectType type) {
     }
 
     if (type == OBJ_TEAPOT) {
-        obj.model = load_model_from_obj_data(TEAPOT_OBJ_DATA);
+        obj.model = load_model_from_obj_data(TEAPOT_OBJ_DATA.c_str());
         obj.modelLoaded = (obj.model.meshCount > 0);
         if (obj.modelLoaded) {
             for (int i = 0; i < obj.model.meshCount; i++) {
@@ -817,7 +817,7 @@ static bool  s_teapotPreviewLoaded = false;
 
 static Model get_teapot_preview() {
     if (!s_teapotPreviewLoaded) {
-        s_teapotPreview = load_model_from_obj_data(TEAPOT_OBJ_DATA);
+        s_teapotPreview = load_model_from_obj_data(TEAPOT_OBJ_DATA.c_str());
         s_teapotPreviewLoaded = true;
     }
     return s_teapotPreview;

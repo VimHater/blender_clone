@@ -1,7 +1,7 @@
 #include "teapot.h"
 // Taken from https://github.com/McNopper/OpenGL/blob/master/Binaries/teapot.obj
 
-const char *TEAPOT_OBJ_DATA =
+const std::string TEAPOT_OBJ_DATA =
     "# Blender v2.61 (sub 0) OBJ File: ''\n"
     "# www.blender.org\n"
     "v 0.605903 0.005903 -0.000000\n"
