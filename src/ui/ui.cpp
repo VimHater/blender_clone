@@ -11,9 +11,80 @@
 #include <dirent.h>
 #endif
 
+#ifdef _WIN32
 extern "C" {
 #include <tinyfiledialogs.h>
 }
+#endif
+
+// ---- File dialog helpers ----
+#ifdef _WIN32
+static const char *open_file_dialog(const char *title, int nFilters, const char *const *filters, const char *filterDesc) {
+    return tinyfd_openFileDialog(title, "", nFilters, filters, filterDesc, 0);
+}
+static const char *save_file_dialog(const char *title, const char *defaultPath, int nFilters, const char *const *filters, const char *filterDesc) {
+    return tinyfd_saveFileDialog(title, defaultPath, nFilters, filters, filterDesc);
+}
+#else
+static char _dialogBuf[4096];
+static const char *open_file_dialog(const char *title, int nFilters, const char *const *filters, const char *filterDesc) {
+    char cmd[2048];
+    snprintf(cmd, sizeof(cmd), "yad --file --title=\"%s\"", title ? title : "Open");
+    if (nFilters > 0 && filterDesc) {
+        char filterStr[512];
+        snprintf(filterStr, sizeof(filterStr), " --file-filter=\"%s |", filterDesc);
+        for (int i = 0; i < nFilters; i++) {
+            strncat(filterStr, " ", sizeof(filterStr) - strlen(filterStr) - 1);
+            strncat(filterStr, filters[i], sizeof(filterStr) - strlen(filterStr) - 1);
+        }
+        strncat(filterStr, "\"", sizeof(filterStr) - strlen(filterStr) - 1);
+        strncat(cmd, filterStr, sizeof(cmd) - strlen(cmd) - 1);
+    }
+    strncat(cmd, " --file-filter=\"All files | *\" 2>/dev/null", sizeof(cmd) - strlen(cmd) - 1);
+
+    FILE *f = popen(cmd, "r");
+    if (!f) return NULL;
+    _dialogBuf[0] = '\0';
+    if (fgets(_dialogBuf, sizeof(_dialogBuf), f)) {
+        size_t len = strlen(_dialogBuf);
+        if (len > 0 && _dialogBuf[len-1] == '\n') _dialogBuf[len-1] = '\0';
+    }
+    int status = pclose(f);
+    if (status != 0 || _dialogBuf[0] == '\0') return NULL;
+    return _dialogBuf;
+}
+static const char *save_file_dialog(const char *title, const char *defaultPath, int nFilters, const char *const *filters, const char *filterDesc) {
+    char cmd[2048];
+    snprintf(cmd, sizeof(cmd), "yad --file --save --title=\"%s\"", title ? title : "Save");
+    if (defaultPath && defaultPath[0]) {
+        strncat(cmd, " --filename=\"", sizeof(cmd) - strlen(cmd) - 1);
+        strncat(cmd, defaultPath, sizeof(cmd) - strlen(cmd) - 1);
+        strncat(cmd, "\"", sizeof(cmd) - strlen(cmd) - 1);
+    }
+    if (nFilters > 0 && filterDesc) {
+        char filterStr[512];
+        snprintf(filterStr, sizeof(filterStr), " --file-filter=\"%s |", filterDesc);
+        for (int i = 0; i < nFilters; i++) {
+            strncat(filterStr, " ", sizeof(filterStr) - strlen(filterStr) - 1);
+            strncat(filterStr, filters[i], sizeof(filterStr) - strlen(filterStr) - 1);
+        }
+        strncat(filterStr, "\"", sizeof(filterStr) - strlen(filterStr) - 1);
+        strncat(cmd, filterStr, sizeof(cmd) - strlen(cmd) - 1);
+    }
+    strncat(cmd, " --file-filter=\"All files | *\" 2>/dev/null", sizeof(cmd) - strlen(cmd) - 1);
+
+    FILE *f = popen(cmd, "r");
+    if (!f) return NULL;
+    _dialogBuf[0] = '\0';
+    if (fgets(_dialogBuf, sizeof(_dialogBuf), f)) {
+        size_t len = strlen(_dialogBuf);
+        if (len > 0 && _dialogBuf[len-1] == '\n') _dialogBuf[len-1] = '\0';
+    }
+    int status = pclose(f);
+    if (status != 0 || _dialogBuf[0] == '\0') return NULL;
+    return _dialogBuf;
+}
+#endif
 #include "builtin_textures/checkerboard.texture_array"
 #include "builtin_textures/brick.texture_array"
 #include "builtin_textures/sand.texture_array"
@@ -164,7 +235,7 @@ void ui_save_as_popup(EditorUI *ui) {
         ImGui::SameLine();
         if (ImGui::Button("...##saveas")) {
             char const *filters[] = {"*.scene", "*.sceneb"};
-            char const *result = tinyfd_saveFileDialog(
+            char const *result = save_file_dialog(
                 "Save As", ui->saveAsName, 2, filters, "Scene files");
             if (result) snprintf(ui->saveAsName, sizeof(ui->saveAsName), "%s", result);
         }
@@ -320,8 +391,8 @@ void ui_menu_bar(Scene *s, EditorCamera *ec, Timeline *tl, EditorUI *ui) {
             }
             if (ImGui::MenuItem("Open...", "Ctrl+O")) {
                 char const *filters[] = {"*.scene", "*.sceneb"};
-                char const *result = tinyfd_openFileDialog(
-                    "Open Scene", "", 2, filters, "Scene files", 0);
+                char const *result = open_file_dialog(
+                    "Open Scene", 2, filters, "Scene files");
                 if (result) {
                     snprintf(ui->loadPath, sizeof(ui->loadPath), "%s", result);
                     ui->wantLoad = true;
@@ -760,8 +831,8 @@ void ui_properties(Scene *s, Timeline *tl, EditorUI *ui) {
                 ImGui::SameLine();
                 if (ImGui::Button("...##tex")) {
                     char const *filters[] = {"*.png", "*.jpg", "*.jpeg", "*.bmp", "*.tga"};
-                    char const *result = tinyfd_openFileDialog(
-                        "Select Texture", "", 5, filters, "Image files", 0);
+                    char const *result = open_file_dialog(
+                        "Select Texture", 5, filters, "Image files");
                     if (result) snprintf(texPathBuf, sizeof(texPathBuf), "%s", result);
                 }
                 ImGui::SameLine();
@@ -875,8 +946,8 @@ void ui_properties(Scene *s, Timeline *tl, EditorUI *ui) {
             ImGui::SameLine();
             if (ImGui::Button("...")) {
                 char const *filters[] = {"*.lua"};
-                char const *result = tinyfd_openFileDialog(
-                    "Select Script", "", 1, filters, "Lua scripts", 0);
+                char const *result = open_file_dialog(
+                    "Select Script", 1, filters, "Lua scripts");
                 if (result) snprintf(obj->scriptPaths[s], sizeof(obj->scriptPaths[s]), "%s", result);
             }
             ImGui::SameLine();
@@ -943,8 +1014,8 @@ void ui_add_object(Scene *s, EditorUI *ui) {
     ImGui::SameLine();
     if (ImGui::Button("...##model")) {
         char const *filters[] = {"*.obj", "*.gltf", "*.glb", "*.fbx", "*.iqm"};
-        char const *result = tinyfd_openFileDialog(
-            "Select Model", "", 5, filters, "3D model files", 0);
+        char const *result = open_file_dialog(
+            "Select Model", 5, filters, "3D model files");
         if (result) snprintf(modelPathBuf, sizeof(modelPathBuf), "%s", result);
     }
     if (ImGui::Button("Load Model", ImVec2(-1, 0))) {
