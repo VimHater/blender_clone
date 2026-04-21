@@ -192,17 +192,47 @@ void scene_generate_name(const Scene *s, const char *baseName, char *outName, in
         snprintf(outName, outLen, "%s", baseName);
         return;
     }
-    // try baseName.001, .002, ...
-    for (int n = 1; n < 10000; n++) {
-        snprintf(outName, outLen, "%s.%03d", baseName, n);
-        taken = false;
-        for (int i = 0; i < s->objectCount; i++) {
-            if (strcmp(s->objects[i].name, outName) == 0) { taken = true; break; }
+
+    // strip existing numeric suffix (e.g. "Cube.001" -> base="Cube")
+    char base[MAX_NAME_LEN];
+    snprintf(base, MAX_NAME_LEN, "%s", baseName);
+    int baseLen = (int)strlen(base);
+    // check if ends with .NNN pattern
+    if (baseLen > 4 && base[baseLen - 4] == '.') {
+        bool allDigits = true;
+        for (int k = baseLen - 3; k < baseLen; k++) {
+            if (base[k] < '0' || base[k] > '9') { allDigits = false; break; }
         }
-        if (!taken) return;
+        if (allDigits) {
+            base[baseLen - 4] = '\0'; // strip ".NNN"
+        }
     }
-    // fallback
-    snprintf(outName, outLen, "%s.???", baseName);
+
+    // find highest existing number for this base
+    int highest = 0;
+    int baseStrLen = (int)strlen(base);
+    for (int i = 0; i < s->objectCount; i++) {
+        const char *name = s->objects[i].name;
+        // match exact base name (counts as 0)
+        if (strcmp(name, base) == 0) {
+            if (highest < 1) highest = 1;
+            continue;
+        }
+        // match base.NNN pattern
+        int nameLen = (int)strlen(name);
+        if (nameLen == baseStrLen + 4 && strncmp(name, base, baseStrLen) == 0 && name[baseStrLen] == '.') {
+            bool allDigits = true;
+            int num = 0;
+            for (int k = baseStrLen + 1; k < nameLen; k++) {
+                if (name[k] < '0' || name[k] > '9') { allDigits = false; break; }
+                num = num * 10 + (name[k] - '0');
+            }
+            if (allDigits && num >= highest) highest = num + 1;
+        }
+    }
+
+    // generate name with next number
+    snprintf(outName, outLen, "%s.%03d", base, highest);
 }
 
 // ---- Add / Remove ----
@@ -701,7 +731,7 @@ void scene_draw_selection(const Scene *s) {
 
 
 // approximate bounding radius of an object (unscaled by gizmo, just object extent)
-static float object_radius(const SceneObject *obj) {
+float object_radius(const SceneObject *obj) {
     Vector3 s = obj->transform.scale;
     float ms = s.x > s.y ? (s.x > s.z ? s.x : s.z) : (s.y > s.z ? s.y : s.z);
     switch (obj->type) {
@@ -737,20 +767,28 @@ static float gizmo_scale_for(Vector3 objPos, Vector3 camPos) {
 
 void scene_draw_gizmo(const Scene *s, TransformMode mode, GizmoAxis activeAxis, Vector3 cameraPos) {
     if (s->selectedCount == 0) return;
-    // find first selected object
-    const SceneObject *obj = nullptr;
+
+    // compute center of all selected objects
+    Vector3 p = {0, 0, 0};
+    float maxRadius = 0;
+    int count = 0;
     for (int i = 0; i < s->objectCount; i++) {
-        if (scene_is_selected(s, s->objects[i].id)) { obj = &s->objects[i]; break; }
+        if (scene_is_selected(s, s->objects[i].id)) {
+            p = Vector3Add(p, s->objects[i].transform.position);
+            float r = object_radius(&s->objects[i]);
+            if (r > maxRadius) maxRadius = r;
+            count++;
+        }
     }
-    if (!obj) return;
+    if (count == 0) return;
+    p = Vector3Scale(p, 1.0f / count);
 
     rlDrawRenderBatchActive();
     rlDisableDepthTest();
     rlDisableDepthMask();
 
-    Vector3 p = obj->transform.position;
     float scale = gizmo_scale_for(p, cameraPos);
-    float minLen = object_radius(obj) + 2.0f;
+    float minLen = maxRadius + 2.0f;
     float len = scale > minLen ? scale : minLen;
     float t = scale * 0.017f; // arrow size (1/3 of original)
 
@@ -838,10 +876,9 @@ static bool hit_ring(Ray ray, Vector3 center, Vector3 axis, float radius, float 
     return false;
 }
 
-GizmoAxis gizmo_hit_test(const SceneObject *obj, Ray ray, TransformMode mode, Vector3 cameraPos) {
-    Vector3 gizmoPos = obj->transform.position;
+GizmoAxis gizmo_hit_test(Vector3 gizmoPos, float maxRadius, Ray ray, TransformMode mode, Vector3 cameraPos) {
     float scale = gizmo_scale_for(gizmoPos, cameraPos);
-    float minLen = object_radius(obj) + 2.0f;
+    float minLen = maxRadius + 2.0f;
     float len = scale > minLen ? scale : minLen;
     float r = len * 0.06f;
 

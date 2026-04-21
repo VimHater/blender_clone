@@ -178,6 +178,12 @@ struct ObjectSnapshot {
     Color color;
     bool visible;
     Vector3 velocity;
+    bool usePhysics;
+    bool useGravity;
+    bool isStatic;
+    float mass;
+    float restitution;
+    float friction;
 };
 
 SceneObject object_default(const char *name, ObjectType type);
