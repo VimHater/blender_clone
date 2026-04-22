@@ -302,13 +302,6 @@ void editor_update(Editor *ed) {
         editor_stop(ed);
     }
 
-    if (ed->ui.wantRenderPathTrace) {
-        ed->ui.wantRenderPathTrace = false;
-        pathtracer_start(&ed->scene, &ed->camera, 1920, 1080);
-    }
-
-    pathtracer_update();
-
     // animation (only in play mode and not paused)
     if (ed->playMode && !ed->ui.paused) {
         float dt = GetFrameTime();
@@ -1151,11 +1144,6 @@ void redo_perform(Editor *ed) {
     ed->scene.objectCount = state->scene.objectCount;
     ed->scene.nextId = state->scene.nextId;
     memcpy(ed->scene.selectedIds, state->scene.selectedIds, sizeof(state->scene.selectedIds));
-    ed->scene.selectedCount = state->scene.selectedCount;
-
-    ed->undo.current--;
-}
-tedIds, sizeof(state->scene.selectedIds));
     ed->scene.selectedCount = state->scene.selectedCount;
 
     ed->undo.current--;
