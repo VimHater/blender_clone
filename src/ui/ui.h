@@ -46,11 +46,7 @@ struct EditorUI {
     GizmoAxis gizmoActiveAxis;
     bool gizmoDragging;
     Vector2 gizmoDragStart;         // screen mouse pos at drag start
-    Vector3 gizmoDragObjStart;      // object position/rotation/scale at drag start (first selected)
-    Vector3 gizmoDragCenter;        // center of all selected objects at drag start
-    Vector3 gizmoDragStarts[MAX_SELECTED]; // per-object start values for multi-select
-    uint32_t gizmoDragIds[MAX_SELECTED];   // IDs of objects being dragged
-    int gizmoDragCount;                    // number of objects in multi-drag
+    Vector3 gizmoDragObjStart;      // object position/rotation/scale at drag start
 
     // title bar dragging
     bool titleBarDragging;
@@ -68,15 +64,6 @@ struct EditorUI {
     bool showSaveAsPopup; // File > Save As popup
     char saveAsName[256]; // filename input buffer
     char currentFilePath[512]; // path of currently open file (for Save)
-
-    bool undoPending;     // set by UI before modifying scene
-
-    // clipboard actions (set by UI, handled by editor)
-    bool wantCopy;
-    bool wantCut;
-    bool wantPaste;
-    bool wantDuplicate;
-    bool hasClipboard;    // true when clipboard has content (for greying out Paste)
 
     // error popup
     bool showErrorPopup;

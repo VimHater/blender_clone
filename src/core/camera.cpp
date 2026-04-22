@@ -1,6 +1,5 @@
 #include "camera.h"
 #include <cmath>
-#include <cstdio>
 #include "raylib.h"
 
 void editor_camera_init(EditorCamera *ec) {
@@ -33,35 +32,26 @@ void editor_camera_sync(EditorCamera *ec) {
     // raylib doesn't expose near/far on Camera3D directly; we set them via rlgl in BeginMode3D
 }
 
-void editor_camera_update(EditorCamera *ec, bool inputAllowed,
-                          float vpX, float vpY, float vpW, float vpH) {
+void editor_camera_update(EditorCamera *ec, bool inputAllowed) {
     if (!inputAllowed) return;
 
     bool altHeld = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
 
-    // Alt held: FPS-style mouse look with viewport wrapping
-    if (altHeld) {
-        if (!IsCursorHidden()) DisableCursor();
+    // hide/show cursor on alt press/release
+    if (altHeld && !IsCursorHidden()) {
+        DisableCursor();
+    } else if (!altHeld && IsCursorHidden()) {
+        EnableCursor();
+    }
 
+    // Alt held: FPS-style mouse look (lower sensitivity for raw input)
+    if (altHeld) {
         Vector2 delta = GetMouseDelta();
         float lookSpeed = ec->orbitSpeed * 0.3f;
         ec->yaw   += delta.x * lookSpeed;
         ec->pitch += delta.y * lookSpeed;
         if (ec->pitch > 1.5f) ec->pitch = 1.5f;
         if (ec->pitch < -1.5f) ec->pitch = -1.5f;
-
-        // wrap cursor to viewport bounds
-        if (vpW > 0 && vpH > 0) {
-            Vector2 mouse = GetMousePosition();
-            bool wrapped = false;
-            if (mouse.x < vpX)          { mouse.x = vpX + vpW - 1; wrapped = true; }
-            else if (mouse.x > vpX + vpW) { mouse.x = vpX + 1;      wrapped = true; }
-            if (mouse.y < vpY)           { mouse.y = vpY + vpH - 1; wrapped = true; }
-            else if (mouse.y > vpY + vpH) { mouse.y = vpY + 1;      wrapped = true; }
-            if (wrapped) SetMousePosition((int)mouse.x, (int)mouse.y);
-        }
-    } else {
-        if (IsCursorHidden()) EnableCursor();
     }
 
     // orbit/pan: middle mouse
@@ -114,7 +104,7 @@ void editor_camera_update(EditorCamera *ec, bool inputAllowed,
         float ly = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y);
         if (fabsf(lx) > deadzone)
             ec->target = Vector3Add(ec->target, Vector3Scale(rightXZ, lx * speed * 2.0f));
-        if (fabsf(ly) >= deadzone)
+        if (fabsf(ly) > deadzone)
             ec->target = Vector3Add(ec->target, Vector3Scale(forwardXZ, -ly * speed * 2.0f));
 
         // right stick: orbit (look around)

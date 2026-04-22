@@ -59,11 +59,6 @@ void editor_init(Editor *ed, int screenW, int screenH) {
     ui_init(&ed->ui, screenW, screenH);
     shadowmap_init(&ed->shadowMap, 8192);
 
-    // init undo
-    memset(&ed->undo, 0, sizeof(ed->undo));
-    ed->undo.current = -1;
-    ed->clipboard.count = 0;
-
     // store font path — try ../font/ first (build/), then ../../font/ (build/Debug/)
     {
         const char *appDir = GetApplicationDirectory();
@@ -207,12 +202,6 @@ static void editor_snapshot(Editor *ed) {
         ed->snapshot[i].color = ed->scene.objects[i].material.color;
         ed->snapshot[i].visible = ed->scene.objects[i].visible;
         ed->snapshot[i].velocity = ed->scene.objects[i].velocity;
-        ed->snapshot[i].usePhysics = ed->scene.objects[i].usePhysics;
-        ed->snapshot[i].useGravity = ed->scene.objects[i].useGravity;
-        ed->snapshot[i].isStatic = ed->scene.objects[i].isStatic;
-        ed->snapshot[i].mass = ed->scene.objects[i].mass;
-        ed->snapshot[i].restitution = ed->scene.objects[i].restitution;
-        ed->snapshot[i].friction = ed->scene.objects[i].friction;
     }
 }
 
@@ -222,23 +211,12 @@ static void editor_restore(Editor *ed) {
         ed->scene.objects[i].material.color = ed->snapshot[i].color;
         ed->scene.objects[i].visible = ed->snapshot[i].visible;
         ed->scene.objects[i].velocity = ed->snapshot[i].velocity;
-        ed->scene.objects[i].usePhysics = ed->snapshot[i].usePhysics;
-        ed->scene.objects[i].useGravity = ed->snapshot[i].useGravity;
-        ed->scene.objects[i].isStatic = ed->snapshot[i].isStatic;
-        ed->scene.objects[i].mass = ed->snapshot[i].mass;
-        ed->scene.objects[i].restitution = ed->snapshot[i].restitution;
-        ed->scene.objects[i].friction = ed->snapshot[i].friction;
     }
 }
 
 static void editor_play(Editor *ed) {
     if (ed->playMode) return;
     editor_snapshot(ed);
-    // reset physics on all objects — Lua scripts must enable it explicitly
-    for (int i = 0; i < ed->scene.objectCount; i++) {
-        ed->scene.objects[i].usePhysics = false;
-        ed->scene.objects[i].velocity = {0, 0, 0};
-    }
     script_load_object_scripts(&ed->scripting);
     script_play(&ed->scripting);
     timeline_play(&ed->timeline);
@@ -265,12 +243,6 @@ void editor_update(Editor *ed) {
     // only rebuild if size changed by more than 1px (avoid constant rebuilds during resize)
     if (fabsf(targetFontSize - ed->ui.lastFontSize) > 1.0f) {
         rebuild_font(&ed->ui, targetFontSize);
-    }
-
-    // handle undo push requested by UI
-    if (ed->ui.undoPending) {
-        undo_push(ed);
-        ed->ui.undoPending = false;
     }
 
     // handle load request from UI
@@ -350,8 +322,7 @@ void editor_update(Editor *ed) {
 
     // camera (disable orbit/pan when in placement mode so clicks go to placement)
     editor_camera_update(&ed->camera,
-        ed->ui.viewportHovered && !ImGui::GetIO().WantCaptureKeyboard,
-        ed->ui.vpImageX, ed->ui.vpImageY, ed->ui.vpImageW, ed->ui.vpImageH);
+        ed->ui.viewportHovered && !ImGui::GetIO().WantCaptureKeyboard);
 
     // Ctrl+S save shortcut
     if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_S)) {
@@ -383,160 +354,11 @@ void editor_update(Editor *ed) {
         ed->ui.showErrorPopup = true;
     }
 
-    // Ctrl+Z undo, Ctrl+Y redo
-    if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_Z)) {
-        undo_perform(ed);
-    }
-    if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_Y)) {
-        redo_perform(ed);
-    }
-
-    // clipboard: keyboard shortcuts set flags, same as UI menu
-    bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
-    if (ctrl && IsKeyPressed(KEY_C) && ed->scene.selectedCount > 0) ed->ui.wantCopy = true;
-    if (ctrl && IsKeyPressed(KEY_X) && ed->scene.selectedCount > 0) ed->ui.wantCut = true;
-    if (ctrl && IsKeyPressed(KEY_V) && ed->clipboard.count > 0)     ed->ui.wantPaste = true;
-    if (ctrl && IsKeyPressed(KEY_D) && ed->scene.selectedCount > 0 && !ImGui::GetIO().WantCaptureKeyboard)
-        ed->ui.wantDuplicate = true;
-
-    // helper: copy selected objects to clipboard
-    auto clipboard_copy = [&]() {
-        ed->clipboard.count = 0;
-        for (int i = 0; i < ed->scene.objectCount && ed->clipboard.count < MAX_SELECTED; i++) {
-            if (scene_is_selected(&ed->scene, ed->scene.objects[i].id)) {
-                ed->clipboard.objects[ed->clipboard.count] = ed->scene.objects[i];
-                ed->clipboard.objects[ed->clipboard.count].material.texture = {};
-                if (ed->scene.objects[i].modelLoaded) {
-                    ed->clipboard.objects[ed->clipboard.count].model = {};
-                    ed->clipboard.objects[ed->clipboard.count].modelLoaded = false;
-                }
-                ed->clipboard.count++;
-            }
-        }
-        ed->ui.hasClipboard = ed->clipboard.count > 0;
-    };
-
-    // Copy
-    if (ed->ui.wantCopy) {
-        ed->ui.wantCopy = false;
-        if (ed->scene.selectedCount > 0) {
-            ed->clipboard.isCut = false;
-            clipboard_copy();
-        }
-    }
-    // Cut
-    if (ed->ui.wantCut) {
-        ed->ui.wantCut = false;
-        if (ed->scene.selectedCount > 0) {
-            undo_push(ed);
-            ed->clipboard.isCut = true;
-            clipboard_copy();
-            uint32_t ids[MAX_SELECTED];
-            int count = ed->scene.selectedCount;
-            for (int i = 0; i < count; i++) ids[i] = ed->scene.selectedIds[i];
-            for (int i = 0; i < count; i++) {
-                int idx = scene_find_by_id(&ed->scene, ids[i]);
-                if (idx >= 0) scene_remove(&ed->scene, idx);
-            }
-        }
-    }
-    // Paste
-    if (ed->ui.wantPaste) {
-        ed->ui.wantPaste = false;
-        if (ed->clipboard.count > 0) {
-            undo_push(ed);
-            Vector3 pastePos = {0, 0, 0};
-            bool hasPastePos = false;
-            Vector2 mouse = GetMousePosition();
-            float localX = (mouse.x - ed->ui.vpImageX) / ed->ui.vpImageW;
-            float localY = (mouse.y - ed->ui.vpImageY) / ed->ui.vpImageH;
-            if (localX >= 0 && localX <= 1 && localY >= 0 && localY <= 1) {
-                Vector2 rtMouse = { localX * (float)ed->ui.viewportW, localY * (float)ed->ui.viewportH };
-                Ray ray = GetScreenToWorldRayEx(rtMouse, ed->camera.cam, ed->ui.viewportW, ed->ui.viewportH);
-                RayHitResult hit = raycast_scene(&ed->scene, ray);
-                if (hit.hit && hit.distance < 50.0f) {
-                    pastePos = hit.point;
-                    hasPastePos = true;
-                } else if (ray.direction.y != 0.0f) {
-                    float t = -ray.position.y / ray.direction.y;
-                    if (t > 0.0f && t < 50.0f) {
-                        pastePos = Vector3{ ray.position.x + ray.direction.x * t, 0.0f,
-                                            ray.position.z + ray.direction.z * t };
-                        hasPastePos = true;
-                    }
-                }
-            }
-            if (!hasPastePos) {
-                Vector3 fwd = Vector3Normalize(Vector3Subtract(ed->camera.cam.target, ed->camera.cam.position));
-                pastePos = Vector3Add(ed->camera.cam.position, Vector3Scale(fwd, 10.0f));
-            }
-            Vector3 clipCenter = {0, 0, 0};
-            for (int i = 0; i < ed->clipboard.count; i++)
-                clipCenter = Vector3Add(clipCenter, ed->clipboard.objects[i].transform.position);
-            clipCenter = Vector3Scale(clipCenter, 1.0f / ed->clipboard.count);
-
-            scene_deselect_all(&ed->scene);
-            for (int i = 0; i < ed->clipboard.count; i++) {
-                if (ed->scene.objectCount >= MAX_OBJECTS) break;
-                int idx = ed->scene.objectCount++;
-                ed->scene.objects[idx] = ed->clipboard.objects[i];
-                ed->scene.objects[idx].id = ed->scene.nextId++;
-                Vector3 offset = Vector3Subtract(ed->clipboard.objects[i].transform.position, clipCenter);
-                ed->scene.objects[idx].transform.position = Vector3Add(pastePos, offset);
-                char unique[MAX_NAME_LEN];
-                scene_generate_name(&ed->scene, ed->clipboard.objects[i].name, unique, MAX_NAME_LEN);
-                snprintf(ed->scene.objects[idx].name, MAX_NAME_LEN, "%s", unique);
-                if (ed->clipboard.objects[i].material.texturePath[0])
-                    object_reload_texture(&ed->scene.objects[idx]);
-                ed->scene.objects[idx].parentIndex = -1;
-                scene_select(&ed->scene, ed->scene.objects[idx].id, false, true);
-            }
-        }
-    }
-    // Duplicate
-    if (ed->ui.wantDuplicate) {
-        ed->ui.wantDuplicate = false;
-        if (ed->scene.selectedCount > 0) {
-            undo_push(ed);
-            SceneObject copies[MAX_SELECTED];
-            int copyCount = 0;
-            for (int i = 0; i < ed->scene.objectCount && copyCount < MAX_SELECTED; i++) {
-                if (scene_is_selected(&ed->scene, ed->scene.objects[i].id)) {
-                    copies[copyCount] = ed->scene.objects[i];
-                    copies[copyCount].material.texture = {};
-                    if (ed->scene.objects[i].modelLoaded) {
-                        copies[copyCount].model = {};
-                        copies[copyCount].modelLoaded = false;
-                    }
-                    copyCount++;
-                }
-            }
-            scene_deselect_all(&ed->scene);
-            for (int i = 0; i < copyCount; i++) {
-                if (ed->scene.objectCount >= MAX_OBJECTS) break;
-                int idx = ed->scene.objectCount++;
-                ed->scene.objects[idx] = copies[i];
-                ed->scene.objects[idx].id = ed->scene.nextId++;
-                ed->scene.objects[idx].transform.position.x += 1.0f;
-                ed->scene.objects[idx].transform.position.y += 1.0f;
-                ed->scene.objects[idx].transform.position.z += 1.0f;
-                char unique[MAX_NAME_LEN];
-                scene_generate_name(&ed->scene, copies[i].name, unique, MAX_NAME_LEN);
-                snprintf(ed->scene.objects[idx].name, MAX_NAME_LEN, "%s", unique);
-                if (copies[i].material.texturePath[0])
-                    object_reload_texture(&ed->scene.objects[idx]);
-                ed->scene.objects[idx].parentIndex = -1;
-                scene_select(&ed->scene, ed->scene.objects[idx].id, false, true);
-            }
-        }
-    }
-
     // transform mode shortcuts
     if (!ImGui::GetIO().WantCaptureKeyboard) {
         if (IsKeyPressed(KEY_T)) ed->ui.transformMode = TMODE_TRANSLATE;
         if (IsKeyPressed(KEY_R)) ed->ui.transformMode = TMODE_ROTATE;
-        if (IsKeyPressed(KEY_Y) && !IsKeyDown(KEY_LEFT_CONTROL) && !IsKeyDown(KEY_RIGHT_CONTROL))
-            ed->ui.transformMode = TMODE_SCALE;
+        if (IsKeyPressed(KEY_Y)) ed->ui.transformMode = TMODE_SCALE;
     }
 
     // placement mode: map mouse to ground plane y=0
@@ -602,7 +424,6 @@ void editor_update(Editor *ed) {
                     "Cylinder", "Cone", "Torus", "Knot", "Capsule", "Polygon",
                     "Teapot", "Camera", "Light", "Model"
                 };
-                undo_push(ed);
                 int idx = scene_add(&ed->scene, names[ed->ui.placementType], ed->ui.placementType);
                 if (idx >= 0) {
                     ed->scene.objects[idx].transform.position = ed->ui.placementPos;
@@ -635,71 +456,69 @@ void editor_update(Editor *ed) {
     if (ed->ui.gizmoDragging) {
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
             // sync transform to keyframe if on one
-            for (int di = 0; di < ed->ui.gizmoDragCount; di++) {
-                SceneObject *obj = scene_get_by_id(&ed->scene, ed->ui.gizmoDragIds[di]);
-                if (obj && obj->keyframeCount > 0) {
-                    keyframe_sync(obj, ed->timeline.currentFrame);
-                }
+            SceneObject *obj = scene_first_selected(&ed->scene);
+            if (obj && obj->keyframeCount > 0) {
+                keyframe_sync(obj, ed->timeline.currentFrame);
             }
             ed->ui.gizmoDragging = false;
             ed->ui.gizmoActiveAxis = GIZMO_NONE;
         } else {
-            Vector2 mouse = GetMousePosition();
-            float dx = mouse.x - ed->ui.gizmoDragStart.x;
-            float dy = mouse.y - ed->ui.gizmoDragStart.y;
-            float sensitivity = ed->camera.distance / (float)ed->ui.viewportH;
+            SceneObject *obj = scene_first_selected(&ed->scene);
+            if (obj) {
+                Vector2 mouse = GetMousePosition();
+                float dx = mouse.x - ed->ui.gizmoDragStart.x;
+                float dy = mouse.y - ed->ui.gizmoDragStart.y;
+                float sensitivity = ed->camera.distance / (float)ed->ui.viewportH;
 
-            // project world axis onto screen to get correct drag direction
-            auto axis_screen_dir = [&](Vector3 worldAxis) -> Vector2 {
-                Vector3 p = ed->ui.gizmoDragCenter;
-                Vector2 s0 = GetWorldToScreenEx(p, ed->camera.cam, ed->ui.viewportW, ed->ui.viewportH);
-                Vector2 s1 = GetWorldToScreenEx(Vector3Add(p, worldAxis), ed->camera.cam, ed->ui.viewportW, ed->ui.viewportH);
-                Vector2 dir = { s1.x - s0.x, s1.y - s0.y };
-                float len = sqrtf(dir.x * dir.x + dir.y * dir.y);
-                if (len > 0.001f) { dir.x /= len; dir.y /= len; }
-                return dir;
-            };
-
-            // compute delta once
-            float delta = 0;
-            if (ed->ui.transformMode == TMODE_TRANSLATE || ed->ui.transformMode == TMODE_SCALE) {
-                Vector3 worldAxis = {0};
-                if (ed->ui.gizmoActiveAxis == GIZMO_X) worldAxis = Vector3{1, 0, 0};
-                else if (ed->ui.gizmoActiveAxis == GIZMO_Y) worldAxis = Vector3{0, 1, 0};
-                else if (ed->ui.gizmoActiveAxis == GIZMO_Z) worldAxis = Vector3{0, 0, 1};
-                Vector2 screenDir = axis_screen_dir(worldAxis);
-                delta = (dx * screenDir.x + dy * screenDir.y) * sensitivity;
-            } else if (ed->ui.transformMode == TMODE_ROTATE) {
-                delta = (dx + dy) * 0.5f;
-            }
-
-            // apply to all dragged objects
-            for (int di = 0; di < ed->ui.gizmoDragCount; di++) {
-                SceneObject *obj = scene_get_by_id(&ed->scene, ed->ui.gizmoDragIds[di]);
-                if (!obj) continue;
-                Vector3 start = ed->ui.gizmoDragStarts[di];
+                // project world axis onto screen to get correct drag direction
+                auto axis_screen_dir = [&](Vector3 worldAxis) -> Vector2 {
+                    Vector3 p = ed->ui.gizmoDragObjStart;
+                    Vector2 s0 = GetWorldToScreenEx(p, ed->camera.cam, ed->ui.viewportW, ed->ui.viewportH);
+                    Vector2 s1 = GetWorldToScreenEx(Vector3Add(p, worldAxis), ed->camera.cam, ed->ui.viewportW, ed->ui.viewportH);
+                    Vector2 dir = { s1.x - s0.x, s1.y - s0.y };
+                    float len = sqrtf(dir.x * dir.x + dir.y * dir.y);
+                    if (len > 0.001f) { dir.x /= len; dir.y /= len; }
+                    return dir;
+                };
 
                 if (ed->ui.transformMode == TMODE_TRANSLATE) {
+                    Vector3 worldAxis = {0};
+                    if (ed->ui.gizmoActiveAxis == GIZMO_X) worldAxis = Vector3{1, 0, 0};
+                    else if (ed->ui.gizmoActiveAxis == GIZMO_Y) worldAxis = Vector3{0, 1, 0};
+                    else if (ed->ui.gizmoActiveAxis == GIZMO_Z) worldAxis = Vector3{0, 0, 1};
+
+                    Vector2 screenDir = axis_screen_dir(worldAxis);
+                    float delta = (dx * screenDir.x + dy * screenDir.y) * sensitivity;
+
                     if (ed->ui.gizmoActiveAxis == GIZMO_X)
-                        obj->transform.position.x = start.x + delta;
+                        obj->transform.position.x = ed->ui.gizmoDragObjStart.x + delta;
                     else if (ed->ui.gizmoActiveAxis == GIZMO_Y)
-                        obj->transform.position.y = start.y + delta;
+                        obj->transform.position.y = ed->ui.gizmoDragObjStart.y + delta;
                     else if (ed->ui.gizmoActiveAxis == GIZMO_Z)
-                        obj->transform.position.z = start.z + delta;
+                        obj->transform.position.z = ed->ui.gizmoDragObjStart.z + delta;
                 } else if (ed->ui.transformMode == TMODE_ROTATE) {
+                    float delta = (dx + dy) * 0.5f; // degrees per pixel, both axes
                     if (ed->ui.gizmoActiveAxis == GIZMO_X)
-                        obj->transform.rotation.x = start.x + delta;
+                        obj->transform.rotation.x = ed->ui.gizmoDragObjStart.x + delta;
                     else if (ed->ui.gizmoActiveAxis == GIZMO_Y)
-                        obj->transform.rotation.y = start.y + delta;
+                        obj->transform.rotation.y = ed->ui.gizmoDragObjStart.y + delta;
                     else if (ed->ui.gizmoActiveAxis == GIZMO_Z)
-                        obj->transform.rotation.z = start.z + delta;
+                        obj->transform.rotation.z = ed->ui.gizmoDragObjStart.z + delta;
                 } else if (ed->ui.transformMode == TMODE_SCALE) {
+                    Vector3 worldAxis = {0};
+                    if (ed->ui.gizmoActiveAxis == GIZMO_X) worldAxis = Vector3{1, 0, 0};
+                    else if (ed->ui.gizmoActiveAxis == GIZMO_Y) worldAxis = Vector3{0, 1, 0};
+                    else if (ed->ui.gizmoActiveAxis == GIZMO_Z) worldAxis = Vector3{0, 0, 1};
+
+                    Vector2 screenDir = axis_screen_dir(worldAxis);
+                    float delta = (dx * screenDir.x + dy * screenDir.y) * sensitivity;
+
                     if (ed->ui.gizmoActiveAxis == GIZMO_X)
-                        obj->transform.scale.x = start.x + delta;
+                        obj->transform.scale.x = ed->ui.gizmoDragObjStart.x + delta;
                     else if (ed->ui.gizmoActiveAxis == GIZMO_Y)
-                        obj->transform.scale.y = start.y + delta;
+                        obj->transform.scale.y = ed->ui.gizmoDragObjStart.y + delta;
                     else if (ed->ui.gizmoActiveAxis == GIZMO_Z)
-                        obj->transform.scale.z = start.z + delta;
+                        obj->transform.scale.z = ed->ui.gizmoDragObjStart.z + delta;
                 }
             }
         }
@@ -716,47 +535,20 @@ void editor_update(Editor *ed) {
         if (inVP) {
             // try gizmo first
             bool gizmoHit = false;
-            if (ed->scene.selectedCount > 0) {
-                // compute selection center and max radius
-                Vector3 center = {0, 0, 0};
-                float maxRadius = 0;
-                int selCount = 0;
-                for (int i = 0; i < ed->scene.objectCount; i++) {
-                    if (scene_is_selected(&ed->scene, ed->scene.objects[i].id)) {
-                        center = Vector3Add(center, ed->scene.objects[i].transform.position);
-                        float r = object_radius(&ed->scene.objects[i]);
-                        if (r > maxRadius) maxRadius = r;
-                        selCount++;
-                    }
-                }
-                center = Vector3Scale(center, 1.0f / selCount);
-
+            SceneObject *sel = scene_first_selected(&ed->scene);
+            if (sel) {
                 Ray ray = viewport_ray(mouse);
-                GizmoAxis axis = gizmo_hit_test(center, maxRadius, ray, ed->ui.transformMode, ed->camera.cam.position);
+                GizmoAxis axis = gizmo_hit_test(sel, ray, ed->ui.transformMode, ed->camera.cam.position);
                 if (axis != GIZMO_NONE) {
-                    undo_push(ed);
                     ed->ui.gizmoActiveAxis = axis;
                     ed->ui.gizmoDragging = true;
                     ed->ui.gizmoDragStart = mouse;
-                    ed->ui.gizmoDragCenter = center;
-
-                    // store per-object start values
-                    ed->ui.gizmoDragCount = 0;
-                    for (int i = 0; i < ed->scene.objectCount && ed->ui.gizmoDragCount < MAX_SELECTED; i++) {
-                        if (scene_is_selected(&ed->scene, ed->scene.objects[i].id)) {
-                            int di = ed->ui.gizmoDragCount;
-                            ed->ui.gizmoDragIds[di] = ed->scene.objects[i].id;
-                            if (ed->ui.transformMode == TMODE_TRANSLATE)
-                                ed->ui.gizmoDragStarts[di] = ed->scene.objects[i].transform.position;
-                            else if (ed->ui.transformMode == TMODE_ROTATE)
-                                ed->ui.gizmoDragStarts[di] = ed->scene.objects[i].transform.rotation;
-                            else
-                                ed->ui.gizmoDragStarts[di] = ed->scene.objects[i].transform.scale;
-                            ed->ui.gizmoDragCount++;
-                        }
-                    }
-                    // keep first selected for axis_screen_dir reference
-                    ed->ui.gizmoDragObjStart = ed->ui.gizmoDragStarts[0];
+                    if (ed->ui.transformMode == TMODE_TRANSLATE)
+                        ed->ui.gizmoDragObjStart = sel->transform.position;
+                    else if (ed->ui.transformMode == TMODE_ROTATE)
+                        ed->ui.gizmoDragObjStart = sel->transform.rotation;
+                    else
+                        ed->ui.gizmoDragObjStart = sel->transform.scale;
                     gizmoHit = true;
                 }
             }
@@ -779,7 +571,6 @@ void editor_update(Editor *ed) {
 
     // delete key — remove all selected objects
     if (ed->scene.selectedCount > 0 && IsKeyPressed(KEY_DELETE) && !ImGui::GetIO().WantCaptureKeyboard) {
-        undo_push(ed);
         // collect IDs first since indices shift during removal
         uint32_t ids[MAX_SELECTED];
         int count = ed->scene.selectedCount;
@@ -1004,147 +795,10 @@ void editor_shutdown(Editor *ed) {
         if (obj->modelLoaded) UnloadModel(obj->model);
         if (obj->material.hasTexture) UnloadTexture(obj->material.texture);
     }
-    // free undo states
-    for (int i = 0; i < ed->undo.count; i++) {
-        delete ed->undo.states[i];
-    }
     script_shutdown(&ed->scripting);
     lighting_shutdown(&ed->lighting);
     shadowmap_unload(&ed->shadowMap);
     ui_shutdown(&ed->ui);
     rlImGuiShutdown();
     CloseWindow();
-}
-
-// ---- Undo/Redo ----
-
-void undo_push(Editor *ed) {
-    // discard any redo states beyond current
-    for (int i = ed->undo.current + 1; i < ed->undo.count; i++) {
-        delete ed->undo.states[i];
-        ed->undo.states[i] = nullptr;
-    }
-    ed->undo.count = ed->undo.current + 1;
-
-    // if at max capacity, shift everything down
-    if (ed->undo.count >= UNDO_MAX_LEVELS) {
-        delete ed->undo.states[0];
-        for (int i = 1; i < ed->undo.count; i++) {
-            ed->undo.states[i - 1] = ed->undo.states[i];
-        }
-        ed->undo.count--;
-    }
-
-    // save current scene state
-    UndoState *state = new UndoState();
-    memcpy(&state->scene, &ed->scene, sizeof(Scene));
-    // clear GPU handles in snapshot so they aren't double-freed
-    for (int i = 0; i < state->scene.objectCount; i++) {
-        state->scene.objects[i].model = Model{0};
-        state->scene.objects[i].modelLoaded = false;
-        state->scene.objects[i].material.texture = Texture2D{0};
-        state->scene.objects[i].material.hasTexture = false;
-    }
-
-    ed->undo.states[ed->undo.count] = state;
-    ed->undo.count++;
-    ed->undo.current = ed->undo.count - 1;
-}
-
-void undo_perform(Editor *ed) {
-    if (ed->undo.current < 0) return;
-
-    // save current state as redo point if we're at the top
-    if (ed->undo.current == ed->undo.count - 1) {
-        // push current state so we can redo back to it
-        if (ed->undo.count < UNDO_MAX_LEVELS) {
-            UndoState *state = new UndoState();
-            memcpy(&state->scene, &ed->scene, sizeof(Scene));
-            for (int i = 0; i < state->scene.objectCount; i++) {
-                state->scene.objects[i].model = Model{0};
-                state->scene.objects[i].modelLoaded = false;
-                state->scene.objects[i].material.texture = Texture2D{0};
-                state->scene.objects[i].material.hasTexture = false;
-            }
-            ed->undo.states[ed->undo.count] = state;
-            ed->undo.count++;
-        }
-    }
-
-    // restore from current undo state
-    UndoState *state = ed->undo.states[ed->undo.current];
-
-    // restore scene data fields (preserve GPU handles)
-    for (int i = 0; i < MAX_OBJECTS; i++) {
-        Model m = ed->scene.objects[i].model;
-        bool ml = ed->scene.objects[i].modelLoaded;
-        Texture2D tex = ed->scene.objects[i].material.texture;
-        bool ht = ed->scene.objects[i].material.hasTexture;
-
-        ed->scene.objects[i] = state->scene.objects[i];
-
-        // restore GPU handles
-        ed->scene.objects[i].model = m;
-        ed->scene.objects[i].modelLoaded = ml;
-        ed->scene.objects[i].material.texture = tex;
-        ed->scene.objects[i].material.hasTexture = ht;
-
-        // reload texture if path changed
-        if (i < state->scene.objectCount && state->scene.objects[i].material.texturePath[0]) {
-            if (!ht || strcmp(ed->scene.objects[i].material.texturePath,
-                             state->scene.objects[i].material.texturePath) != 0) {
-                // path differs, need to reload
-                strncpy(ed->scene.objects[i].material.texturePath,
-                        state->scene.objects[i].material.texturePath, 256);
-                if (ht) UnloadTexture(tex);
-                ed->scene.objects[i].material.hasTexture = false;
-                object_reload_texture(&ed->scene.objects[i]);
-            }
-        }
-    }
-    ed->scene.objectCount = state->scene.objectCount;
-    ed->scene.nextId = state->scene.nextId;
-    memcpy(ed->scene.selectedIds, state->scene.selectedIds, sizeof(state->scene.selectedIds));
-    ed->scene.selectedCount = state->scene.selectedCount;
-
-    ed->undo.current--;
-}
-
-void redo_perform(Editor *ed) {
-    if (ed->undo.current + 2 >= ed->undo.count) return;
-
-    ed->undo.current += 2;
-    // reuse undo_perform logic by temporarily adjusting
-    UndoState *state = ed->undo.states[ed->undo.current];
-
-    for (int i = 0; i < MAX_OBJECTS; i++) {
-        Model m = ed->scene.objects[i].model;
-        bool ml = ed->scene.objects[i].modelLoaded;
-        Texture2D tex = ed->scene.objects[i].material.texture;
-        bool ht = ed->scene.objects[i].material.hasTexture;
-
-        ed->scene.objects[i] = state->scene.objects[i];
-
-        ed->scene.objects[i].model = m;
-        ed->scene.objects[i].modelLoaded = ml;
-        ed->scene.objects[i].material.texture = tex;
-        ed->scene.objects[i].material.hasTexture = ht;
-
-        if (i < state->scene.objectCount && state->scene.objects[i].material.texturePath[0]) {
-            if (!ht || strcmp(ed->scene.objects[i].material.texturePath,
-                             state->scene.objects[i].material.texturePath) != 0) {
-                strncpy(ed->scene.objects[i].material.texturePath,
-                        state->scene.objects[i].material.texturePath, 256);
-                if (ht) UnloadTexture(tex);
-                ed->scene.objects[i].material.hasTexture = false;
-                object_reload_texture(&ed->scene.objects[i]);
-            }
-        }
-    }
-    ed->scene.objectCount = state->scene.objectCount;
-    ed->scene.nextId = state->scene.nextId;
-    memcpy(ed->scene.selectedIds, state->scene.selectedIds, sizeof(state->scene.selectedIds));
-    ed->scene.selectedCount = state->scene.selectedCount;
-
-    ed->undo.current--;
 }

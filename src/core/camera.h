@@ -20,8 +20,7 @@ struct EditorCamera {
 };
 
 void editor_camera_init(EditorCamera *ec);
-void editor_camera_update(EditorCamera *ec, bool inputAllowed,
-                          float vpX = 0, float vpY = 0, float vpW = 0, float vpH = 0);
+void editor_camera_update(EditorCamera *ec, bool inputAllowed);
 void editor_camera_sync(EditorCamera *ec);
 void editor_camera_focus(EditorCamera *ec, Vector3 point, float dist);
 

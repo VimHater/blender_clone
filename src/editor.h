@@ -11,24 +11,6 @@
 #include <core/physics.h>
 #include <ui/ui.h>
 
-#define UNDO_MAX_LEVELS 64
-
-struct UndoState {
-    Scene scene;  // full scene copy (GPU handles are shared, not owned)
-};
-
-struct UndoStack {
-    UndoState *states[UNDO_MAX_LEVELS];
-    int count;    // number of states stored
-    int current;  // index of current state (-1 = none)
-};
-
-struct Clipboard {
-    SceneObject objects[MAX_SELECTED];
-    int count;
-    bool isCut;  // true = cut (delete originals on paste)
-};
-
 struct Editor {
     Scene scene;
     EditorCamera camera;
@@ -44,12 +26,6 @@ struct Editor {
     int snapshotCount;
     bool playMode;
     int lastKeyframeFrame;  // track frame changes for keyframe evaluation
-
-    // undo/redo
-    UndoStack undo;
-
-    // clipboard
-    Clipboard clipboard;
 };
 
 void editor_init(Editor *ed, int screenW, int screenH);
@@ -59,9 +35,5 @@ void editor_draw(Editor *ed);
 void editor_shutdown(Editor *ed);
 bool editor_save(Editor *ed, const char *path);
 bool editor_load(Editor *ed, const char *path);
-
-void undo_push(Editor *ed);
-void undo_perform(Editor *ed);
-void redo_perform(Editor *ed);
 
 #endif // EDITOR_H
