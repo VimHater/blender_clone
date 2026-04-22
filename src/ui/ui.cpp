@@ -124,6 +124,12 @@ void ui_init(EditorUI *ui, int vpW, int vpH) {
     ui->showSaveAsPopup = false;
     strncpy(ui->saveAsName, "project.scene", sizeof(ui->saveAsName));
     ui->currentFilePath[0] = '\0';
+    ui->undoPending = false;
+    ui->wantCopy = false;
+    ui->wantCut = false;
+    ui->wantPaste = false;
+    ui->wantDuplicate = false;
+    ui->hasClipboard = false;
     ui->showErrorPopup = false;
     ui->errorMessage[0] = '\0';
     ui->gizmoActiveAxis = GIZMO_NONE;
@@ -566,6 +572,13 @@ static char s_renameBuf[MAX_NAME_LEN] = {};
 // track last clicked index for shift-select range
 static int s_lastClickedIndex = -1;
 
+// drag-select state
+static bool s_hierDragging = false;
+static ImVec2 s_hierDragStart = {0, 0};
+static float s_hierItemMinY[MAX_OBJECTS];
+static float s_hierItemMaxY[MAX_OBJECTS];
+static int s_hierItemCount = 0;
+
 static void hierarchy_draw_node(Scene *s, int index, EditorUI *ui) {
     SceneObject *obj = &s->objects[index];
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
@@ -587,7 +600,20 @@ static void hierarchy_draw_node(Scene *s, int index, EditorUI *ui) {
         if (ImGui::InputText("##rename", s_renameBuf, MAX_NAME_LEN,
                              ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
             if (s_renameBuf[0] != '\0') {
-                snprintf(obj->name, MAX_NAME_LEN, "%s", s_renameBuf);
+                // check for duplicate name
+                bool taken = false;
+                for (int i = 0; i < s->objectCount; i++) {
+                    if (s->objects[i].id != obj->id && strcmp(s->objects[i].name, s_renameBuf) == 0) {
+                        taken = true; break;
+                    }
+                }
+                if (taken) {
+                    char unique[MAX_NAME_LEN];
+                    scene_generate_name(s, s_renameBuf, unique, MAX_NAME_LEN);
+                    snprintf(obj->name, MAX_NAME_LEN, "%s", unique);
+                } else {
+                    snprintf(obj->name, MAX_NAME_LEN, "%s", s_renameBuf);
+                }
             }
             s_renameId = 0;
         }
@@ -599,14 +625,22 @@ static void hierarchy_draw_node(Scene *s, int index, EditorUI *ui) {
     } else {
         open = ImGui::TreeNodeEx((void *)(intptr_t)obj->id, flags, "%s", obj->name);
 
+        // record item bounds for drag-select
+        if (index < MAX_OBJECTS) {
+            ImVec2 rMin = ImGui::GetItemRectMin();
+            ImVec2 rMax = ImGui::GetItemRectMax();
+            s_hierItemMinY[index] = rMin.y;
+            s_hierItemMaxY[index] = rMax.y;
+        }
+
         // double-click to rename
         if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
             s_renameId = obj->id;
             snprintf(s_renameBuf, MAX_NAME_LEN, "%s", obj->name);
         }
 
-        // single click for selection
-        if (ImGui::IsItemClicked(0) && !ImGui::IsMouseDoubleClicked(0)) {
+        // single click for selection (only if not drag-selecting)
+        if (!s_hierDragging && ImGui::IsItemClicked(0) && !ImGui::IsMouseDoubleClicked(0)) {
             bool ctrl = ImGui::GetIO().KeyCtrl;
             bool shift = ImGui::GetIO().KeyShift;
             if (shift && s_lastClickedIndex >= 0) {
@@ -628,8 +662,9 @@ static void hierarchy_draw_node(Scene *s, int index, EditorUI *ui) {
     }
 }
 
-static void hierarchy_context_add(Scene *s, const char *label, const char *name, ObjectType type) {
+static void hierarchy_context_add(Scene *s, const char *label, const char *name, ObjectType type, EditorUI *ui) {
     if (ImGui::MenuItem(label)) {
+        ui->undoPending = true;
         int idx = scene_add(s, name, type);
         if (idx >= 0) {
             scene_deselect_all(s);
@@ -642,8 +677,17 @@ void ui_hierarchy(Scene *s, EditorUI *ui) {
     if (!ui->showHierarchy) return;
     ImGui::Begin("Scene Hierarchy", &ui->showHierarchy);
 
-    // click empty space to deselect
-    if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(0) && !ImGui::IsAnyItemHovered()) {
+    // reset item tracking each frame
+    s_hierItemCount = s->objectCount;
+
+    // drag-select: start drag on empty space (left mouse, no ctrl/shift for normal click)
+    if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(0) && !ImGui::IsAnyItemHovered() && !ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeyShift) {
+        s_hierDragging = true;
+        s_hierDragStart = ImGui::GetMousePos();
+    }
+
+    // click empty space to deselect (only if not starting a drag that selects something)
+    if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(0) && !ImGui::IsAnyItemHovered() && !ImGui::GetIO().KeyCtrl) {
         scene_deselect_all(s);
     }
 
@@ -653,22 +697,65 @@ void ui_hierarchy(Scene *s, EditorUI *ui) {
         }
     }
 
+    // drag-select logic
+    if (s_hierDragging) {
+        if (ImGui::IsMouseDown(0)) {
+            // live highlight: select items within drag range
+            ImVec2 mousePos = ImGui::GetMousePos();
+            float dragDist = fabsf(mousePos.y - s_hierDragStart.y);
+            if (dragDist > 4.0f) { // threshold to distinguish from click
+                float minY = (s_hierDragStart.y < mousePos.y) ? s_hierDragStart.y : mousePos.y;
+                float maxY = (s_hierDragStart.y > mousePos.y) ? s_hierDragStart.y : mousePos.y;
+                scene_deselect_all(s);
+                for (int i = 0; i < s_hierItemCount && i < MAX_OBJECTS; i++) {
+                    // item overlaps drag range if item's bottom > minY and item's top < maxY
+                    if (s_hierItemMaxY[i] > minY && s_hierItemMinY[i] < maxY) {
+                        scene_select(s, s->objects[i].id, false, true);
+                    }
+                }
+            }
+
+            // draw selection rectangle overlay
+            ImDrawList *dl = ImGui::GetWindowDrawList();
+            ImVec2 winMin = ImGui::GetWindowPos();
+            float winWidth = ImGui::GetWindowSize().x;
+            ImVec2 rectMin = ImVec2(winMin.x, (s_hierDragStart.y < mousePos.y) ? s_hierDragStart.y : mousePos.y);
+            ImVec2 rectMax = ImVec2(winMin.x + winWidth, (s_hierDragStart.y > mousePos.y) ? s_hierDragStart.y : mousePos.y);
+            dl->AddRectFilled(rectMin, rectMax, IM_COL32(100, 150, 255, 40));
+            dl->AddRect(rectMin, rectMax, IM_COL32(100, 150, 255, 150));
+        } else {
+            // mouse released, finalize selection
+            s_hierDragging = false;
+        }
+    }
+
     if (ImGui::BeginPopupContextWindow("HierarchyContext")) {
-        hierarchy_context_add(s, "Add Cube",       "Cube",       OBJ_CUBE);
-        hierarchy_context_add(s, "Add Sphere",     "Sphere",     OBJ_SPHERE);
-        hierarchy_context_add(s, "Add Plane",      "Plane",      OBJ_PLANE);
-        hierarchy_context_add(s, "Add Cylinder",   "Cylinder",   OBJ_CYLINDER);
-        hierarchy_context_add(s, "Add Cone",       "Cone",       OBJ_CONE);
-        hierarchy_context_add(s, "Add Torus",      "Torus",      OBJ_TORUS);
-        hierarchy_context_add(s, "Add Knot",       "Knot",       OBJ_KNOT);
-        hierarchy_context_add(s, "Add Capsule",    "Capsule",    OBJ_CAPSULE);
-        hierarchy_context_add(s, "Add Polygon",    "Polygon",    OBJ_POLY);
-        ImGui::Separator();
         if (s->selectedCount > 0) {
-            if (ImGui::MenuItem("Delete Selected")) {
+            if (ImGui::MenuItem("Copy", "Ctrl+C"))      ui->wantCopy = true;
+            if (ImGui::MenuItem("Cut", "Ctrl+X"))       ui->wantCut = true;
+            if (ImGui::MenuItem("Duplicate", "Ctrl+D")) ui->wantDuplicate = true;
+        }
+        if (ImGui::MenuItem("Paste", "Ctrl+V", false, ui->hasClipboard)) ui->wantPaste = true;
+        ImGui::Separator();
+        if (ImGui::BeginMenu("Add")) {
+            hierarchy_context_add(s, "Cube",       "Cube",       OBJ_CUBE,     ui);
+            hierarchy_context_add(s, "Sphere",     "Sphere",     OBJ_SPHERE,   ui);
+            hierarchy_context_add(s, "Plane",      "Plane",      OBJ_PLANE,    ui);
+            hierarchy_context_add(s, "Cylinder",   "Cylinder",   OBJ_CYLINDER, ui);
+            hierarchy_context_add(s, "Cone",       "Cone",       OBJ_CONE,     ui);
+            hierarchy_context_add(s, "Torus",      "Torus",      OBJ_TORUS,    ui);
+            hierarchy_context_add(s, "Knot",       "Knot",       OBJ_KNOT,     ui);
+            hierarchy_context_add(s, "Capsule",    "Capsule",    OBJ_CAPSULE,  ui);
+            hierarchy_context_add(s, "Polygon",    "Polygon",    OBJ_POLY,     ui);
+            ImGui::EndMenu();
+        }
+        if (s->selectedCount > 0) {
+            ImGui::Separator();
+            if (ImGui::MenuItem("Delete", "Del")) {
                 uint32_t ids[MAX_SELECTED];
                 int count = s->selectedCount;
                 for (int i = 0; i < count; i++) ids[i] = s->selectedIds[i];
+                ui->undoPending = true;
                 for (int i = 0; i < count; i++) {
                     int idx = scene_find_by_id(s, ids[i]);
                     if (idx >= 0) scene_remove(s, idx);
@@ -695,10 +782,36 @@ void ui_properties(Scene *s, Timeline *tl, EditorUI *ui) {
     }
     if (s->selectedCount > 1) {
         ImGui::Text("%d objects selected", s->selectedCount);
-        ImGui::Separator();
+        ImGui::End();
+        return;
     }
 
-    ImGui::InputText("Name", obj->name, MAX_NAME_LEN);
+    static char s_nameBuf[MAX_NAME_LEN] = {};
+    static uint32_t s_nameEditId = 0;
+    // sync buffer when selection changes
+    if (s_nameEditId != obj->id) {
+        snprintf(s_nameBuf, MAX_NAME_LEN, "%s", obj->name);
+        s_nameEditId = obj->id;
+    }
+    if (ImGui::InputText("Name", s_nameBuf, MAX_NAME_LEN, ImGuiInputTextFlags_EnterReturnsTrue) ||
+        (!ImGui::IsItemActive() && strcmp(s_nameBuf, obj->name) != 0 && s_nameBuf[0] != '\0')) {
+        // check if name is taken by another object
+        bool taken = false;
+        for (int i = 0; i < s->objectCount; i++) {
+            if (s->objects[i].id != obj->id && strcmp(s->objects[i].name, s_nameBuf) == 0) {
+                taken = true; break;
+            }
+        }
+        if (taken) {
+            // auto-generate unique name
+            char unique[MAX_NAME_LEN];
+            scene_generate_name(s, s_nameBuf, unique, MAX_NAME_LEN);
+            snprintf(obj->name, MAX_NAME_LEN, "%s", unique);
+        } else {
+            snprintf(obj->name, MAX_NAME_LEN, "%s", s_nameBuf);
+        }
+        snprintf(s_nameBuf, MAX_NAME_LEN, "%s", obj->name);
+    }
     ImGui::Checkbox("Visible", &obj->visible);
     ImGui::Separator();
 
@@ -986,6 +1099,7 @@ void ui_add_object(Scene *s, EditorUI *ui) {
     }
     if (ImGui::Button("Load Model", ImVec2(-1, 0))) {
         if (modelPathBuf[0] != '\0') {
+            ui->undoPending = true;
             int idx = scene_add_model(s, modelPathBuf);
             if (idx >= 0) {
                 if (!s->objects[idx].modelLoaded) {

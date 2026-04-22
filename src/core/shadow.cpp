@@ -99,7 +99,7 @@ void shadowmap_begin_spot(ShadowMap *sm, Vector3 lightPos, Vector3 lightDir, flo
     float fov = outerAngleDeg * 2.0f;
     if (fov > 170.0f) fov = 170.0f;
     float farPlane = sceneRadius * 4.0f;
-    Matrix lightProj = MatrixPerspective(fov * DEG2RAD, 1.0f, 0.1f, farPlane);
+    Matrix lightProj = MatrixPerspective(fov * DEG2RAD, 1.0f, 0.5f, farPlane);
 
     sm->lightSpaceMatrix = MatrixMultiply(lightView, lightProj);
 

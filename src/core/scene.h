@@ -39,10 +39,13 @@ SceneObject *scene_get_by_id(Scene *s, uint32_t id);
 int       scene_add_model(Scene *s, const char *filePath);
 Model     load_model_from_obj_data(const char *objData);
 
+// object helpers
+float        object_radius(const SceneObject *obj);
+
 // gizmo
 enum GizmoAxis { GIZMO_NONE = 0, GIZMO_X, GIZMO_Y, GIZMO_Z };
 void         scene_draw_gizmo(const Scene *s, TransformMode mode, GizmoAxis activeAxis, Vector3 cameraPos);
-GizmoAxis    gizmo_hit_test(const SceneObject *obj, Ray ray, TransformMode mode, Vector3 cameraPos);
+GizmoAxis    gizmo_hit_test(Vector3 gizmoPos, float maxRadius, Ray ray, TransformMode mode, Vector3 cameraPos);
 
 // bounding box
 BoundingBox  scene_get_bounds(const Scene *s, int index);
