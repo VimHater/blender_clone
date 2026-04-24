@@ -1,5 +1,6 @@
 #include "lighting.h"
 #include "scene.h"
+#include "shader_utils.h"
 #include <rlgl.h>
 #include <cstdio>
 #include <cstring>
@@ -322,6 +323,20 @@ static const ShaderDef SHADER_DEFS[SHADER_COUNT] = {
     { VS_COMMON, FS_FRESNEL,    true  }, // SHADER_FRESNEL
 };
 
+// external shader file paths (relative to shaders/ directory)
+struct ShaderFileDef {
+    const char *vsFile;
+    const char *fsFile;
+};
+
+static const ShaderFileDef SHADER_FILE_DEFS[SHADER_COUNT] = {
+    { "common.vert", "default.frag"    }, // SHADER_DEFAULT
+    { "common.vert", "unlit.frag"      }, // SHADER_UNLIT
+    { "common.vert", "toon.frag"       }, // SHADER_TOON
+    { "common.vert", "normal_vis.frag" }, // SHADER_NORMAL_VIS
+    { "common.vert", "fresnel.frag"    }, // SHADER_FRESNEL
+};
+
 static void resolve_light_uniforms(LightingState *ls, int idx) {
     Shader s = ls->shaders[idx];
     ls->lightCountLoc[idx] = GetShaderLocation(s, "lightCount");
@@ -362,7 +377,9 @@ void lighting_init(LightingState *ls) {
     ls->ambientColor[3] = 1.0f;
 
     for (int s = 0; s < SHADER_COUNT; s++) {
-        ls->shaders[s] = LoadShaderFromMemory(SHADER_DEFS[s].vs, SHADER_DEFS[s].fs);
+        ls->shaders[s] = load_shader_from_file(
+            SHADER_FILE_DEFS[s].vsFile, SHADER_FILE_DEFS[s].fsFile,
+            SHADER_DEFS[s].vs, SHADER_DEFS[s].fs);
         ls->shaderLoaded[s] = (ls->shaders[s].id != 0);
 
         if (!ls->shaderLoaded[s]) {

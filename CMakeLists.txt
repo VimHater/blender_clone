@@ -79,6 +79,13 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     endif()
 endif()
 
+# copy shader files to build/shaders/
+file(GLOB SHADER_FILES "shaders/*.vert" "shaders/*.frag" "shaders/*.glsl")
+foreach(SHADER ${SHADER_FILES})
+    get_filename_component(FNAME ${SHADER} NAME)
+    configure_file(${SHADER} "${CMAKE_BINARY_DIR}/shaders/${FNAME}" COPYONLY)
+endforeach()
+
 # copy example files to build/examples/
 file(GLOB EXAMPLE_FILES "examples/*.scene" "examples/*.lua")
 foreach(EXAMPLE ${EXAMPLE_FILES})

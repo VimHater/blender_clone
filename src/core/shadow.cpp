@@ -1,4 +1,5 @@
 #include "shadow.h"
+#include "shader_utils.h"
 #include <rlgl.h>
 #include <cstdio>
 #include <cmath>
@@ -25,7 +26,7 @@ void shadowmap_init(ShadowMap *sm, int resolution) {
     sm->depthTexture = 0;
     sm->lightSpaceMatrix = MatrixIdentity();
 
-    sm->depthShader = LoadShaderFromMemory(VS_DEPTH, FS_DEPTH);
+    sm->depthShader = load_shader_from_file("depth.vert", "depth.frag", VS_DEPTH, FS_DEPTH);
     if (sm->depthShader.id == 0) {
         printf("[SHADOW] Failed to load depth shader\n");
         return;
