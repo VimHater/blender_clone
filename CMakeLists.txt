@@ -79,12 +79,22 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     endif()
 endif()
 
-# copy shader files to build/shaders/
-file(GLOB SHADER_FILES "shaders/*.vert" "shaders/*.frag" "shaders/*.glsl")
-foreach(SHADER ${SHADER_FILES})
-    get_filename_component(FNAME ${SHADER} NAME)
-    configure_file(${SHADER} "${CMAKE_BINARY_DIR}/shaders/${FNAME}" COPYONLY)
-endforeach()
+# embed shader files at compile time: read .glsl sources, expand includes, generate header
+file(READ "shaders/shadow_common.glsl" SHADOW_COMMON_SRC)
+file(READ "shaders/common.vert" COMMON_VERT_SRC)
+file(READ "shaders/depth.vert" DEPTH_VERT_SRC)
+file(READ "shaders/depth.frag" DEPTH_FRAG_SRC)
+file(READ "shaders/unlit.frag" UNLIT_FRAG_SRC)
+file(READ "shaders/normal_vis.frag" NORMAL_VIS_FRAG_SRC)
+# fragment shaders with shadow include — read raw then expand pragma
+file(READ "shaders/default.frag" DEFAULT_FRAG_RAW)
+file(READ "shaders/toon.frag" TOON_FRAG_RAW)
+file(READ "shaders/fresnel.frag" FRESNEL_FRAG_RAW)
+string(REPLACE "// #pragma include \"shadow_common.glsl\"" "${SHADOW_COMMON_SRC}" DEFAULT_FRAG_SRC "${DEFAULT_FRAG_RAW}")
+string(REPLACE "// #pragma include \"shadow_common.glsl\"" "${SHADOW_COMMON_SRC}" TOON_FRAG_SRC "${TOON_FRAG_RAW}")
+string(REPLACE "// #pragma include \"shadow_common.glsl\"" "${SHADOW_COMMON_SRC}" FRESNEL_FRAG_SRC "${FRESNEL_FRAG_RAW}")
+configure_file("src/core/shader_embed.h.in" "${CMAKE_BINARY_DIR}/generated/shader_embed.h" @ONLY)
+target_include_directories(melder PRIVATE "${CMAKE_BINARY_DIR}/generated")
 
 # copy example files to build/examples/
 file(GLOB EXAMPLE_FILES "examples/*.scene" "examples/*.lua")
