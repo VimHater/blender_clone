@@ -498,7 +498,7 @@ void editor_update(Editor *ed) {
         ed->ui.wantDuplicate = false;
         if (ed->scene.selectedCount > 0) {
             undo_push(ed);
-            SceneObject copies[MAX_SELECTED];
+            SceneObject *copies = new SceneObject[MAX_SELECTED];
             int copyCount = 0;
             for (int i = 0; i < ed->scene.objectCount && copyCount < MAX_SELECTED; i++) {
                 if (scene_is_selected(&ed->scene, ed->scene.objects[i].id)) {
@@ -528,6 +528,7 @@ void editor_update(Editor *ed) {
                 ed->scene.objects[idx].parentIndex = -1;
                 scene_select(&ed->scene, ed->scene.objects[idx].id, false, true);
             }
+            delete[] copies;
         }
     }
 
