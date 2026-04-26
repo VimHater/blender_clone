@@ -45,7 +45,7 @@ void editor_camera_update(EditorCamera *ec, bool inputAllowed,
 
         Vector2 delta = GetMouseDelta();
         float lookSpeed = ec->orbitSpeed * 0.3f;
-        ec->yaw   += delta.x * lookSpeed;
+        ec->yaw   -= delta.x * lookSpeed;
         ec->pitch += delta.y * lookSpeed;
         if (ec->pitch > 1.5f) ec->pitch = 1.5f;
         if (ec->pitch < -1.5f) ec->pitch = -1.5f;
