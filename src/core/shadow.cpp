@@ -1,8 +1,23 @@
 #include "shadow.h"
-#include "shader_embed.h"
 #include <rlgl.h>
 #include <cstdio>
 #include <cmath>
+
+// ---- Depth-only shaders ----
+static const char *VS_DEPTH =
+    "#version 330\n"
+    "in vec3 vertexPosition;\n"
+    "uniform mat4 mvp;\n"
+    "void main() {\n"
+    "    gl_Position = mvp * vec4(vertexPosition, 1.0);\n"
+    "}\n";
+
+static const char *FS_DEPTH =
+    "#version 330\n"
+    "out vec4 finalColor;\n"
+    "void main() {\n"
+    "    finalColor = vec4(1.0);\n"
+    "}\n";
 
 void shadowmap_init(ShadowMap *sm, int resolution) {
     sm->resolution = resolution;
@@ -10,7 +25,7 @@ void shadowmap_init(ShadowMap *sm, int resolution) {
     sm->depthTexture = 0;
     sm->lightSpaceMatrix = MatrixIdentity();
 
-    sm->depthShader = LoadShaderFromMemory(SHADER_SRC_DEPTH_VERT, SHADER_SRC_DEPTH_FRAG);
+    sm->depthShader = LoadShaderFromMemory(VS_DEPTH, FS_DEPTH);
     if (sm->depthShader.id == 0) {
         printf("[SHADOW] Failed to load depth shader\n");
         return;
